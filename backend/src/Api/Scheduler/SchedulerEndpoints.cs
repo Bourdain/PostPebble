@@ -23,8 +23,10 @@ public static class SchedulerEndpoints
     private static async Task<IResult> CreateScheduledPostAsync(
         CreateScheduledPostRequest request,
         ClaimsPrincipal principal,
-        AppDbContext dbContext,
-        CreditLedgerService ledgerService,
+        SchedulerDbContext schedulerDbContext,
+        MediaDbContext mediaDbContext,
+        ITenantAccessService tenantAccessService,
+        IReservationLedgerService reservationLedgerService,
         CancellationToken cancellationToken)
     {
         var userId = CurrentUserProvider.GetUserId(principal);
@@ -38,14 +40,14 @@ public static class SchedulerEndpoints
             return Results.BadRequest("At least one target is required.");
         }
 
-        var isMember = await ledgerService.IsTenantMemberAsync(userId.Value, request.TenantId, cancellationToken);
+        var isMember = await tenantAccessService.IsTenantMemberAsync(userId.Value, request.TenantId, cancellationToken);
         if (!isMember)
         {
             return Results.Forbid();
         }
 
         var creditsNeeded = request.Targets.Count;
-        var reservation = await ledgerService.ReserveAsync(
+        var reservation = await reservationLedgerService.ReserveAsync(
             request.TenantId,
             creditsNeeded,
             $"schedule:{Guid.NewGuid()}",
@@ -76,7 +78,7 @@ public static class SchedulerEndpoints
 
         if (request.MediaAssetIds is { Count: > 0 })
         {
-            var mediaAssets = await dbContext.MediaAssets
+            var mediaAssets = await mediaDbContext.MediaAssets
                 .Where(x => x.TenantId == request.TenantId && request.MediaAssetIds.Contains(x.Id))
                 .Select(x => x.Id)
                 .ToListAsync(cancellationToken);
@@ -94,8 +96,8 @@ public static class SchedulerEndpoints
                 .ToList();
         }
 
-        dbContext.ScheduledPosts.Add(post);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        schedulerDbContext.ScheduledPosts.Add(post);
+        await schedulerDbContext.SaveChangesAsync(cancellationToken);
 
         return Results.Ok(new
         {
@@ -109,8 +111,9 @@ public static class SchedulerEndpoints
     private static async Task<IResult> ListScheduledPostsAsync(
         Guid tenantId,
         ClaimsPrincipal principal,
-        AppDbContext dbContext,
-        CreditLedgerService ledgerService,
+        SchedulerDbContext dbContext,
+        MediaDbContext mediaDbContext,
+        ITenantAccessService tenantAccessService,
         CancellationToken cancellationToken)
     {
         var userId = CurrentUserProvider.GetUserId(principal);
@@ -119,7 +122,7 @@ public static class SchedulerEndpoints
             return Results.Unauthorized();
         }
 
-        var isMember = await ledgerService.IsTenantMemberAsync(userId.Value, tenantId, cancellationToken);
+        var isMember = await tenantAccessService.IsTenantMemberAsync(userId.Value, tenantId, cancellationToken);
         if (!isMember)
         {
             return Results.Forbid();
@@ -129,38 +132,54 @@ public static class SchedulerEndpoints
             .Where(x => x.TenantId == tenantId)
             .Include(x => x.Targets)
             .Include(x => x.MediaLinks)
-            .ThenInclude(x => x.MediaAsset)
             .OrderByDescending(x => x.ScheduledAtUtc)
             .Take(200)
-            .Select(x => new
-            {
-                x.Id,
-                x.TextContent,
-                x.ScheduledAtUtc,
-                x.CreatedAtUtc,
-                x.ReservationId,
-                status = x.Status.ToString(),
-                x.FailureReason,
-                x.SettledAtUtc,
-                targets = x.Targets.Select(t => new { platform = t.Platform.ToString(), t.ExternalAccountId }),
-                media = x.MediaLinks.Select(m => new
-                {
-                    m.MediaAssetId,
-                    fileName = m.MediaAsset!.OriginalFileName,
-                    m.MediaAsset.PublicUrl,
-                    m.MediaAsset.ContentType
-                })
-            })
             .ToListAsync(cancellationToken);
 
-        return Results.Ok(posts);
+        var mediaIds = posts
+            .SelectMany(x => x.MediaLinks)
+            .Select(x => x.MediaAssetId)
+            .Distinct()
+            .ToList();
+
+        var mediaById = await mediaDbContext.MediaAssets
+            .Where(x => mediaIds.Contains(x.Id))
+            .ToDictionaryAsync(
+                x => x.Id,
+                x => new { x.OriginalFileName, x.PublicUrl, x.ContentType },
+                cancellationToken
+            );
+
+        var rows = posts.Select(x => new
+        {
+            x.Id,
+            x.TextContent,
+            x.ScheduledAtUtc,
+            x.CreatedAtUtc,
+            x.ReservationId,
+            status = x.Status.ToString(),
+            x.FailureReason,
+            x.SettledAtUtc,
+            targets = x.Targets.Select(t => new { platform = t.Platform.ToString(), t.ExternalAccountId }),
+            media = x.MediaLinks
+                .Select(m => mediaById.TryGetValue(m.MediaAssetId, out var media) ? new
+                {
+                    m.MediaAssetId,
+                    fileName = media.OriginalFileName,
+                    media.PublicUrl,
+                    media.ContentType
+                } : null)
+                .Where(m => m is not null)
+        });
+
+        return Results.Ok(rows);
     }
 
     private static async Task<IResult> MarkPublishingAsync(
         Guid postId,
         ClaimsPrincipal principal,
-        AppDbContext dbContext,
-        CreditLedgerService ledgerService,
+        SchedulerDbContext dbContext,
+        ITenantAccessService tenantAccessService,
         CancellationToken cancellationToken)
     {
         var userId = CurrentUserProvider.GetUserId(principal);
@@ -175,7 +194,7 @@ public static class SchedulerEndpoints
             return Results.NotFound();
         }
 
-        var isAdmin = await ledgerService.IsTenantAdminAsync(userId.Value, post.TenantId, cancellationToken);
+        var isAdmin = await tenantAccessService.IsTenantAdminAsync(userId.Value, post.TenantId, cancellationToken);
         if (!isAdmin)
         {
             return Results.Forbid();
@@ -194,8 +213,9 @@ public static class SchedulerEndpoints
     private static async Task<IResult> MarkSuccessAsync(
         Guid postId,
         ClaimsPrincipal principal,
-        AppDbContext dbContext,
-        CreditLedgerService ledgerService,
+        SchedulerDbContext dbContext,
+        ITenantAccessService tenantAccessService,
+        IReservationLedgerService reservationLedgerService,
         CancellationToken cancellationToken)
     {
         var userId = CurrentUserProvider.GetUserId(principal);
@@ -210,13 +230,13 @@ public static class SchedulerEndpoints
             return Results.NotFound();
         }
 
-        var isAdmin = await ledgerService.IsTenantAdminAsync(userId.Value, post.TenantId, cancellationToken);
+        var isAdmin = await tenantAccessService.IsTenantAdminAsync(userId.Value, post.TenantId, cancellationToken);
         if (!isAdmin)
         {
             return Results.Forbid();
         }
 
-        var settled = await ledgerService.ConsumeReservationAsync(post.ReservationId, $"publish_success:{postId}", cancellationToken);
+        var settled = await reservationLedgerService.ConsumeReservationAsync(post.ReservationId, $"publish_success:{postId}", cancellationToken);
         if (!settled)
         {
             return Results.Conflict("Reservation already settled or missing.");
@@ -234,8 +254,9 @@ public static class SchedulerEndpoints
         Guid postId,
         MarkFailedRequest request,
         ClaimsPrincipal principal,
-        AppDbContext dbContext,
-        CreditLedgerService ledgerService,
+        SchedulerDbContext dbContext,
+        ITenantAccessService tenantAccessService,
+        IReservationLedgerService reservationLedgerService,
         CancellationToken cancellationToken)
     {
         var userId = CurrentUserProvider.GetUserId(principal);
@@ -250,13 +271,13 @@ public static class SchedulerEndpoints
             return Results.NotFound();
         }
 
-        var isAdmin = await ledgerService.IsTenantAdminAsync(userId.Value, post.TenantId, cancellationToken);
+        var isAdmin = await tenantAccessService.IsTenantAdminAsync(userId.Value, post.TenantId, cancellationToken);
         if (!isAdmin)
         {
             return Results.Forbid();
         }
 
-        var released = await ledgerService.ReleaseReservationAsync(post.ReservationId, $"publish_failed:{postId}", cancellationToken);
+        var released = await reservationLedgerService.ReleaseReservationAsync(post.ReservationId, $"publish_failed:{postId}", cancellationToken);
         if (!released)
         {
             return Results.Conflict("Reservation already settled or missing.");
@@ -273,8 +294,9 @@ public static class SchedulerEndpoints
     private static async Task<IResult> ReconcileReservationsAsync(
         Guid tenantId,
         ClaimsPrincipal principal,
-        AppDbContext dbContext,
-        CreditLedgerService ledgerService,
+        SchedulerDbContext dbContext,
+        ITenantAccessService tenantAccessService,
+        IReservationLedgerService reservationLedgerService,
         CancellationToken cancellationToken)
     {
         var userId = CurrentUserProvider.GetUserId(principal);
@@ -283,7 +305,7 @@ public static class SchedulerEndpoints
             return Results.Unauthorized();
         }
 
-        var isAdmin = await ledgerService.IsTenantAdminAsync(userId.Value, tenantId, cancellationToken);
+        var isAdmin = await tenantAccessService.IsTenantAdminAsync(userId.Value, tenantId, cancellationToken);
         if (!isAdmin)
         {
             return Results.Forbid();
@@ -298,7 +320,7 @@ public static class SchedulerEndpoints
         var releasedCount = 0;
         foreach (var post in stalePosts)
         {
-            var released = await ledgerService.ReleaseReservationAsync(
+            var released = await reservationLedgerService.ReleaseReservationAsync(
                 post.ReservationId,
                 $"reconcile:{post.Id}",
                 cancellationToken

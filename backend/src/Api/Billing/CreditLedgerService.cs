@@ -4,24 +4,12 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Api.Billing;
 
-public sealed class CreditLedgerService(AppDbContext dbContext)
+public sealed class CreditLedgerService(BillingDbContext dbContext) : IReservationLedgerService
 {
     public async Task<int> GetBalanceAsync(Guid tenantId, CancellationToken cancellationToken)
     {
         var wallet = await EnsureWalletAsync(tenantId, cancellationToken);
         return wallet.BalanceCredits;
-    }
-
-    public async Task<bool> IsTenantAdminAsync(Guid userId, Guid tenantId, CancellationToken cancellationToken)
-    {
-        var membership = await dbContext.Memberships
-            .SingleOrDefaultAsync(x => x.UserId == userId && x.TenantId == tenantId, cancellationToken);
-        return membership is not null && (membership.Role == TenantRole.Owner || membership.Role == TenantRole.Admin);
-    }
-
-    public async Task<bool> IsTenantMemberAsync(Guid userId, Guid tenantId, CancellationToken cancellationToken)
-    {
-        return await dbContext.Memberships.AnyAsync(x => x.UserId == userId && x.TenantId == tenantId, cancellationToken);
     }
 
     public async Task AddPurchaseAsync(Guid tenantId, int credits, string referenceId, string description, CancellationToken cancellationToken)

@@ -20,8 +20,8 @@ public static class MediaEndpoints
     private static async Task<IResult> UploadAsync(
         HttpRequest request,
         ClaimsPrincipal principal,
-        AppDbContext dbContext,
-        CreditLedgerService ledgerService,
+        MediaDbContext dbContext,
+        ITenantAccessService tenantAccessService,
         IMediaStorage mediaStorage,
         IOptions<MediaStorageOptions> optionsAccessor,
         CancellationToken cancellationToken)
@@ -58,7 +58,7 @@ public static class MediaEndpoints
             return Results.BadRequest("Unsupported media type.");
         }
 
-        var isMember = await ledgerService.IsTenantMemberAsync(userId.Value, tenantId, cancellationToken);
+        var isMember = await tenantAccessService.IsTenantMemberAsync(userId.Value, tenantId, cancellationToken);
         if (!isMember)
         {
             return Results.Forbid();
@@ -97,8 +97,8 @@ public static class MediaEndpoints
     private static async Task<IResult> ListAsync(
         Guid tenantId,
         ClaimsPrincipal principal,
-        AppDbContext dbContext,
-        CreditLedgerService ledgerService,
+        MediaDbContext dbContext,
+        ITenantAccessService tenantAccessService,
         CancellationToken cancellationToken)
     {
         var userId = CurrentUserProvider.GetUserId(principal);
@@ -107,7 +107,7 @@ public static class MediaEndpoints
             return Results.Unauthorized();
         }
 
-        var isMember = await ledgerService.IsTenantMemberAsync(userId.Value, tenantId, cancellationToken);
+        var isMember = await tenantAccessService.IsTenantMemberAsync(userId.Value, tenantId, cancellationToken);
         if (!isMember)
         {
             return Results.Forbid();

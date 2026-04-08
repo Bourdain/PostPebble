@@ -1,0 +1,10 @@
+{
+  "ExpandedNodes": [
+    "",
+    "\\backend",
+    "\\backend\\src",
+    "\\backend\\src\\SchedulerWorker"
+  ],
+  "SelectedNode": "\\backend\\src\\SchedulerWorker\\Program.cs",
+  "PreviewInSolutionExplorer": false
+}

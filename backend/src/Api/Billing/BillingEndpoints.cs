@@ -27,6 +27,7 @@ public static class BillingEndpoints
     private static async Task<IResult> GetWalletAsync(
         Guid tenantId,
         ClaimsPrincipal principal,
+        ITenantAccessService tenantAccessService,
         CreditLedgerService ledgerService,
         CancellationToken cancellationToken)
     {
@@ -36,7 +37,7 @@ public static class BillingEndpoints
             return Results.Unauthorized();
         }
 
-        var isMember = await ledgerService.IsTenantMemberAsync(userId.Value, tenantId, cancellationToken);
+        var isMember = await tenantAccessService.IsTenantMemberAsync(userId.Value, tenantId, cancellationToken);
         if (!isMember)
         {
             return Results.Forbid();
@@ -49,8 +50,8 @@ public static class BillingEndpoints
     private static async Task<IResult> GetTransactionsAsync(
         Guid tenantId,
         ClaimsPrincipal principal,
-        CreditLedgerService ledgerService,
-        AppDbContext dbContext,
+        ITenantAccessService tenantAccessService,
+        BillingDbContext dbContext,
         CancellationToken cancellationToken)
     {
         var userId = CurrentUserProvider.GetUserId(principal);
@@ -59,7 +60,7 @@ public static class BillingEndpoints
             return Results.Unauthorized();
         }
 
-        var isMember = await ledgerService.IsTenantMemberAsync(userId.Value, tenantId, cancellationToken);
+        var isMember = await tenantAccessService.IsTenantMemberAsync(userId.Value, tenantId, cancellationToken);
         if (!isMember)
         {
             return Results.Forbid();
@@ -86,6 +87,7 @@ public static class BillingEndpoints
     private static async Task<IResult> CreateCheckoutSessionAsync(
         CreateCheckoutSessionRequest request,
         ClaimsPrincipal principal,
+        ITenantAccessService tenantAccessService,
         CreditLedgerService ledgerService,
         IOptions<StripeOptions> optionsAccessor,
         CancellationToken cancellationToken)
@@ -101,7 +103,7 @@ public static class BillingEndpoints
             return Results.BadRequest("Credits must be greater than zero.");
         }
 
-        var isAdmin = await ledgerService.IsTenantAdminAsync(userId.Value, request.TenantId, cancellationToken);
+        var isAdmin = await tenantAccessService.IsTenantAdminAsync(userId.Value, request.TenantId, cancellationToken);
         if (!isAdmin)
         {
             return Results.Forbid();
@@ -150,8 +152,8 @@ public static class BillingEndpoints
     private static async Task<IResult> GetWebhookEventsAsync(
         Guid tenantId,
         ClaimsPrincipal principal,
-        CreditLedgerService ledgerService,
-        AppDbContext dbContext,
+        ITenantAccessService tenantAccessService,
+        BillingDbContext dbContext,
         CancellationToken cancellationToken)
     {
         var userId = CurrentUserProvider.GetUserId(principal);
@@ -160,7 +162,7 @@ public static class BillingEndpoints
             return Results.Unauthorized();
         }
 
-        var isAdmin = await ledgerService.IsTenantAdminAsync(userId.Value, tenantId, cancellationToken);
+        var isAdmin = await tenantAccessService.IsTenantAdminAsync(userId.Value, tenantId, cancellationToken);
         if (!isAdmin)
         {
             return Results.Forbid();
@@ -187,6 +189,7 @@ public static class BillingEndpoints
     private static async Task<IResult> GrantCreditsAsync(
         DevGrantCreditsRequest request,
         ClaimsPrincipal principal,
+        ITenantAccessService tenantAccessService,
         CreditLedgerService ledgerService,
         CancellationToken cancellationToken)
     {
@@ -201,7 +204,7 @@ public static class BillingEndpoints
             return Results.BadRequest("Credits must be greater than zero.");
         }
 
-        var isAdmin = await ledgerService.IsTenantAdminAsync(userId.Value, request.TenantId, cancellationToken);
+        var isAdmin = await tenantAccessService.IsTenantAdminAsync(userId.Value, request.TenantId, cancellationToken);
         if (!isAdmin)
         {
             return Results.Forbid();

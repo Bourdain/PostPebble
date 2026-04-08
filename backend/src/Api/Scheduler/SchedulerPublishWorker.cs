@@ -36,13 +36,14 @@ public sealed class SchedulerPublishWorker(
     private async Task ProcessDuePostsAsync(CancellationToken cancellationToken)
     {
         using var scope = scopeFactory.CreateScope();
-        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var ledgerService = scope.ServiceProvider.GetRequiredService<CreditLedgerService>();
+        var schedulerDbContext = scope.ServiceProvider.GetRequiredService<SchedulerDbContext>();
+        var integrationsDbContext = scope.ServiceProvider.GetRequiredService<IntegrationsDbContext>();
+        var reservationLedgerService = scope.ServiceProvider.GetRequiredService<IReservationLedgerService>();
         var linkedInPublisher = scope.ServiceProvider.GetRequiredService<LinkedInPublisher>();
 
         var now = DateTime.UtcNow;
         var batchSize = _options.BatchSize <= 0 ? 20 : _options.BatchSize;
-        var duePosts = await dbContext.ScheduledPosts
+        var duePosts = await schedulerDbContext.ScheduledPosts
             .Where(x => x.Status == ScheduledPostStatus.Queued && x.ScheduledAtUtc <= now)
             .Include(x => x.Targets)
             .OrderBy(x => x.ScheduledAtUtc)
@@ -52,7 +53,7 @@ public sealed class SchedulerPublishWorker(
         foreach (var post in duePosts)
         {
             post.Status = ScheduledPostStatus.Publishing;
-            await dbContext.SaveChangesAsync(cancellationToken);
+            await schedulerDbContext.SaveChangesAsync(cancellationToken);
 
             var successful = true;
             string? failureReason = null;
@@ -67,7 +68,7 @@ public sealed class SchedulerPublishWorker(
 
                 try
                 {
-                    var connection = await dbContext.LinkedInConnections
+                    var connection = await integrationsDbContext.LinkedInConnections
                         .SingleOrDefaultAsync(x => x.TenantId == post.TenantId, cancellationToken);
                     if (connection is null)
                     {
@@ -88,20 +89,20 @@ public sealed class SchedulerPublishWorker(
 
             if (successful)
             {
-                await ledgerService.ConsumeReservationAsync(post.ReservationId, $"worker_success:{post.Id}", cancellationToken);
+                await reservationLedgerService.ConsumeReservationAsync(post.ReservationId, $"worker_success:{post.Id}", cancellationToken);
                 post.Status = ScheduledPostStatus.Published;
                 post.SettledAtUtc = DateTime.UtcNow;
                 post.FailureReason = null;
             }
             else
             {
-                await ledgerService.ReleaseReservationAsync(post.ReservationId, $"worker_failed:{post.Id}", cancellationToken);
+                await reservationLedgerService.ReleaseReservationAsync(post.ReservationId, $"worker_failed:{post.Id}", cancellationToken);
                 post.Status = ScheduledPostStatus.Refunded;
                 post.SettledAtUtc = DateTime.UtcNow;
                 post.FailureReason = failureReason ?? "Worker failed to publish.";
             }
 
-            await dbContext.SaveChangesAsync(cancellationToken);
+            await schedulerDbContext.SaveChangesAsync(cancellationToken);
         }
     }
 }

@@ -31,10 +31,52 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 
     options.UseNpgsql(connectionString);
 });
+builder.Services.AddDbContext<BillingDbContext>(options =>
+{
+    var connectionString = builder.Configuration.GetConnectionString("Postgres");
+    if (string.IsNullOrWhiteSpace(connectionString))
+    {
+        connectionString = "Host=localhost;Port=5432;Database=postpebble;Username=postpebble;Password=postpebble_dev_password";
+    }
+
+    options.UseNpgsql(connectionString);
+});
+builder.Services.AddDbContext<MediaDbContext>(options =>
+{
+    var connectionString = builder.Configuration.GetConnectionString("Postgres");
+    if (string.IsNullOrWhiteSpace(connectionString))
+    {
+        connectionString = "Host=localhost;Port=5432;Database=postpebble;Username=postpebble;Password=postpebble_dev_password";
+    }
+
+    options.UseNpgsql(connectionString);
+});
+builder.Services.AddDbContext<SchedulerDbContext>(options =>
+{
+    var connectionString = builder.Configuration.GetConnectionString("Postgres");
+    if (string.IsNullOrWhiteSpace(connectionString))
+    {
+        connectionString = "Host=localhost;Port=5432;Database=postpebble;Username=postpebble;Password=postpebble_dev_password";
+    }
+
+    options.UseNpgsql(connectionString);
+});
+builder.Services.AddDbContext<IntegrationsDbContext>(options =>
+{
+    var connectionString = builder.Configuration.GetConnectionString("Postgres");
+    if (string.IsNullOrWhiteSpace(connectionString))
+    {
+        connectionString = "Host=localhost;Port=5432;Database=postpebble;Username=postpebble;Password=postpebble_dev_password";
+    }
+
+    options.UseNpgsql(connectionString);
+});
 
 builder.Services.AddScoped<JwtTokenService>();
 builder.Services.AddScoped<PasswordService>();
 builder.Services.AddScoped<CreditLedgerService>();
+builder.Services.AddScoped<ITenantAccessService, TenantAccessService>();
+builder.Services.AddScoped<IReservationLedgerService>(sp => sp.GetRequiredService<CreditLedgerService>());
 builder.Services.AddScoped<StripeWebhookService>();
 builder.Services.AddScoped<IMediaStorage, LocalMediaStorage>();
 builder.Services.AddHttpClient<LinkedInOAuthService>();
@@ -71,12 +113,6 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddAuthorization();
 
 var app = builder.Build();
-
-using (var scope = app.Services.CreateScope())
-{
-    var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    dbContext.Database.Migrate();
-}
 
 var uploadsPath = Path.Combine(app.Environment.ContentRootPath, "uploads");
 Directory.CreateDirectory(uploadsPath);

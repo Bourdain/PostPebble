@@ -24,8 +24,8 @@ public static class LinkedInEndpoints
     private static async Task<IResult> CreateAuthorizeUrlAsync(
         CreateLinkedInAuthorizeRequest request,
         ClaimsPrincipal principal,
-        AppDbContext dbContext,
-        CreditLedgerService ledgerService,
+        IntegrationsDbContext dbContext,
+        ITenantAccessService tenantAccessService,
         LinkedInOAuthService oAuthService,
         IOptions<LinkedInOptions> optionsAccessor,
         CancellationToken cancellationToken)
@@ -36,7 +36,7 @@ public static class LinkedInEndpoints
             return Results.Unauthorized();
         }
 
-        var isMember = await ledgerService.IsTenantMemberAsync(userId.Value, request.TenantId, cancellationToken);
+        var isMember = await tenantAccessService.IsTenantMemberAsync(userId.Value, request.TenantId, cancellationToken);
         if (!isMember)
         {
             return Results.Forbid();
@@ -63,7 +63,7 @@ public static class LinkedInEndpoints
 
     private static async Task<IResult> HandleCallbackAsync(
         HttpRequest request,
-        AppDbContext dbContext,
+        IntegrationsDbContext dbContext,
         LinkedInOAuthService oAuthService,
         IOptions<LinkedInOptions> optionsAccessor,
         ILoggerFactory loggerFactory,
@@ -142,8 +142,8 @@ public static class LinkedInEndpoints
     private static async Task<IResult> ListConnectionsAsync(
         Guid tenantId,
         ClaimsPrincipal principal,
-        AppDbContext dbContext,
-        CreditLedgerService ledgerService,
+        IntegrationsDbContext dbContext,
+        ITenantAccessService tenantAccessService,
         CancellationToken cancellationToken)
     {
         var userId = CurrentUserProvider.GetUserId(principal);
@@ -152,7 +152,7 @@ public static class LinkedInEndpoints
             return Results.Unauthorized();
         }
 
-        var isMember = await ledgerService.IsTenantMemberAsync(userId.Value, tenantId, cancellationToken);
+        var isMember = await tenantAccessService.IsTenantMemberAsync(userId.Value, tenantId, cancellationToken);
         if (!isMember)
         {
             return Results.Forbid();
@@ -179,8 +179,8 @@ public static class LinkedInEndpoints
         Guid tenantId,
         UpdateMemberUrnRequest request,
         ClaimsPrincipal principal,
-        AppDbContext dbContext,
-        CreditLedgerService ledgerService,
+        IntegrationsDbContext dbContext,
+        ITenantAccessService tenantAccessService,
         CancellationToken cancellationToken)
     {
         var userId = CurrentUserProvider.GetUserId(principal);
@@ -189,7 +189,7 @@ public static class LinkedInEndpoints
             return Results.Unauthorized();
         }
 
-        var isAdmin = await ledgerService.IsTenantAdminAsync(userId.Value, tenantId, cancellationToken);
+        var isAdmin = await tenantAccessService.IsTenantAdminAsync(userId.Value, tenantId, cancellationToken);
         if (!isAdmin)
         {
             return Results.Forbid();

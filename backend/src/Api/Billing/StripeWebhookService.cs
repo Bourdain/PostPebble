@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Api.Billing;
 
-public sealed class StripeWebhookService(AppDbContext dbContext)
+public sealed class StripeWebhookService(BillingDbContext dbContext)
 {
     public async Task<bool> TryBeginEventAsync(string eventId, string eventType, string rawPayload, Guid? tenantId, CancellationToken cancellationToken)
     {
