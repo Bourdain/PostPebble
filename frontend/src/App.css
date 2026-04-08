@@ -1,0 +1,171 @@
+.page {
+  max-width: 1080px;
+  margin: 2rem auto;
+  padding: 0 1rem 2rem;
+  font-family: Inter, Segoe UI, Arial, sans-serif;
+  color: #e6ecff;
+}
+
+body {
+  margin: 0;
+  background: radial-gradient(circle at top, #1e2a56 0%, #0a0f22 50%, #070b18 100%);
+}
+
+.hero {
+  margin-bottom: 1rem;
+}
+
+.hero h1 {
+  margin: 0;
+  font-size: 2rem;
+}
+
+.hero p {
+  color: #b9c6f5;
+}
+
+.card {
+  background: rgba(16, 23, 46, 0.88);
+  border: 1px solid rgba(132, 153, 255, 0.2);
+  border-radius: 14px;
+  padding: 1rem;
+  margin-top: 1rem;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+}
+
+.grid {
+  display: grid;
+  gap: 0.6rem;
+  max-width: 760px;
+}
+
+.row {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+input, button {
+  border-radius: 10px;
+  border: 1px solid rgba(149, 166, 255, 0.35);
+  padding: 0.55rem 0.7rem;
+  font-size: 0.95rem;
+}
+
+input {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+button {
+  background: linear-gradient(135deg, #6b7cff, #4f5de0);
+  color: #fff;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th,
+.table td {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+  padding: 0.5rem 0.35rem;
+}
+
+.chips {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-top: 0.8rem;
+}
+
+.assetCard {
+  border: 1px solid rgba(149, 166, 255, 0.25);
+  border-radius: 10px;
+  padding: 0.4rem;
+  background: rgba(255, 255, 255, 0.03);
+  display: grid;
+  gap: 0.4rem;
+  width: 140px;
+}
+
+.assetCard.selected {
+  border-color: rgba(51, 183, 255, 0.85);
+}
+
+.assetPreview {
+  width: 100%;
+  height: 90px;
+  object-fit: cover;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.25);
+}
+
+.assetPlaceholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #b9c6f5;
+  font-size: 0.8rem;
+}
+
+.chip {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(149, 166, 255, 0.25);
+}
+
+.chip.selected {
+  background: linear-gradient(135deg, #2d7aff, #33b7ff);
+}
+
+.smallInput {
+  width: 80px;
+}
+
+.statusBar {
+  margin-top: 1rem;
+  color: #b9c6f5;
+}
+
+.statusBadge {
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  border: 1px solid transparent;
+}
+
+.statusBadge.queued { background: rgba(99, 102, 241, 0.2); border-color: rgba(99, 102, 241, 0.5); }
+.statusBadge.publishing { background: rgba(251, 191, 36, 0.2); border-color: rgba(251, 191, 36, 0.5); }
+.statusBadge.success { background: rgba(34, 197, 94, 0.2); border-color: rgba(34, 197, 94, 0.5); }
+.statusBadge.failed { background: rgba(239, 68, 68, 0.2); border-color: rgba(239, 68, 68, 0.5); }
+.statusBadge.refunded { background: rgba(14, 165, 233, 0.2); border-color: rgba(14, 165, 233, 0.5); }
+
+.postMediaRow {
+  margin-top: 0.35rem;
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.postMediaThumb {
+  width: 36px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.miniTag {
+  padding: 0.15rem 0.35rem;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 0.72rem;
+}

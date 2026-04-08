@@ -1,0 +1,96 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: postpebble-postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-postpebble}
+      POSTGRES_USER: ${POSTGRES_USER:-postpebble}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postpebble_dev_password}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postpebble} -d ${POSTGRES_DB:-postpebble}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: postpebble-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    container_name: postpebble-api
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://+:8080
+      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=${POSTGRES_DB:-postpebble};Username=${DB_API_USER:-postpebble_api};Password=${DB_API_PASSWORD:-postpebble_api_dev_password}
+      ConnectionStrings__Redis: redis:6379
+      Frontend__BaseUrl: http://localhost:${FRONTEND_PORT:-5173}
+      Stripe__SecretKey: ${STRIPE_SECRET_KEY:-}
+      Stripe__WebhookSecret: ${STRIPE_WEBHOOK_SECRET:-}
+      Stripe__UnitPriceUsd: ${POST_UNIT_PRICE_USD:-0.5}
+      LinkedIn__ClientId: ${LINKEDIN_CLIENT_ID:-}
+      LinkedIn__PrimaryClientSecret: ${LINKEDIN_PRIMARY_CLIENT_SECRET:-}
+      LinkedIn__Scopes: ${LINKEDIN_SCOPES:-w_member_social}
+    ports:
+      - "${API_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  scheduler:
+    container_name: postpebble-scheduler
+    build:
+      context: .
+      dockerfile: backend/SchedulerWorker.Dockerfile
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=${POSTGRES_DB:-postpebble};Username=${DB_SCHEDULER_USER:-postpebble_scheduler};Password=${DB_SCHEDULER_PASSWORD:-postpebble_scheduler_dev_password}
+      ConnectionStrings__Redis: redis:6379
+      LinkedIn__ClientId: ${LINKEDIN_CLIENT_ID:-}
+      LinkedIn__PrimaryClientSecret: ${LINKEDIN_PRIMARY_CLIENT_SECRET:-}
+      LinkedIn__Scopes: ${LINKEDIN_SCOPES:-w_member_social}
+      SchedulerWorker__PollIntervalSeconds: ${SCHEDULER_POLL_INTERVAL_SECONDS:-20}
+      SchedulerWorker__BatchSize: ${SCHEDULER_BATCH_SIZE:-20}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_started
+
+  web:
+    container_name: postpebble-web
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_BASE_URL: http://localhost:${API_PORT:-8080}
+        VITE_STRIPE_PUBLISHABLE_KEY: ${VITE_STRIPE_PUBLISHABLE_KEY:-}
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+    depends_on:
+      - api
+      - scheduler
+
+volumes:
+  postgres_data:
+  redis_data:
