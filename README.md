@@ -41,15 +41,15 @@ Docker-first foundation for a multi-tenant social media management SaaS.
 
 ## Stripe CLI local webhook verification
 1. Login once:
-   - `\"E:\\Chrome Downloads\\stripe_1.40.2_windows_x86_64\\stripe.exe\" login`
+   - `\"stripe.exe\" login`
 2. Start forwarding:
-   - `\"E:\\Chrome Downloads\\stripe_1.40.2_windows_x86_64\\stripe.exe\" listen --forward-to http://localhost:8080/api/v1/billing/stripe/webhook`
+   - `\"stripe.exe\" listen --forward-to http://localhost:8080/api/v1/billing/stripe/webhook`
 3. Copy the printed signing secret into `.env`:
    - `STRIPE_WEBHOOK_SECRET=whsec_...`
 4. Restart API:
    - `docker compose up --build -d api`
 5. Trigger a test event:
-   - `\"E:\\Chrome Downloads\\stripe_1.40.2_windows_x86_64\\stripe.exe\" trigger checkout.session.completed`
+   - `\"stripe.exe\" trigger checkout.session.completed`
 6. Verify:
    - wallet increases
    - `GET /api/v1/billing/stripe/webhook-events/{tenantId}` shows processed status
