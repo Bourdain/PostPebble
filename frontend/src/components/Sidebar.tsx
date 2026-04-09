@@ -3,6 +3,8 @@ import { NavLink } from 'react-router-dom';
 import { LayoutDashboard, Calendar, Image as ImageIcon, CreditCard, Link as LinkIcon, LogOut } from 'lucide-react';
 import { usePostPebble } from '../contexts/PostPebbleContext';
 
+import { Logo } from './Logo';
+
 export function Sidebar() {
   const { activeTenant, logout } = usePostPebble();
 
@@ -14,8 +16,7 @@ export function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="sidebar-logo">
-        <div style={{ background: 'var(--highlight-blue)', width: '28px', height: '28px', borderRadius: '8px' }} />
-        PostPebble
+        <Logo width={160} />
       </div>
 
       <nav className="sidebar-nav">

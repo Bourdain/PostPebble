@@ -7,13 +7,17 @@ export function Scheduler() {
   const { 
     scheduledPosts, loadScheduledPosts, createScheduledPost, 
     linkedInConnections, loadLinkedInConnections,
-    mediaAssets, loadMedia
+    mediaAssets, loadMedia, apiBaseUrl
   } = usePostPebble();
 
   const [textContent, setTextContent] = useState('');
   const [scheduledAtUtc, setScheduledAtUtc] = useState(new Date().toISOString().slice(0,16));
   const [selectedTargets, setSelectedTargets] = useState<{platform: string; externalAccountId: string}[]>([]);
+  const [selectedMedia, setSelectedMedia] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  const [viewMode, setViewMode] = useState<'list'|'calendar'>('list');
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   useEffect(() => {
     loadScheduledPosts();
@@ -30,15 +34,29 @@ export function Scheduler() {
     });
   };
 
+  const handleToggleMedia = (id: string) => {
+    setSelectedMedia(prev => prev.includes(id) ? prev.filter(m => m !== id) : [...prev, id]);
+  };
+
   const handleSchedule = async () => {
     if (selectedTargets.length === 0) return;
     setIsSubmitting(true);
-    // Convert local datetime to UTC for API
     const dateObj = new Date(scheduledAtUtc);
-    await createScheduledPost(textContent, dateObj.toISOString(), selectedTargets, []); // Note: leaving media out of scheduler UI to keep it simple, per old app
+    await createScheduledPost(textContent, dateObj.toISOString(), selectedTargets, selectedMedia);
     setIsSubmitting(false);
     setTextContent('');
+    setSelectedMedia([]);
   };
+
+  const today = new Date();
+  const currentYear = today.getFullYear();
+  const currentMonth = today.getMonth();
+  const daysInMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+  const firstDayOfMonth = new Date(currentYear, currentMonth, 1).getDay(); 
+
+  const filteredQueue = selectedDate 
+    ? scheduledPosts.filter(p => new Date(p.scheduledAtUtc).toDateString() === new Date(selectedDate).toDateString())
+    : scheduledPosts;
 
   return (
     <div>
@@ -86,6 +104,36 @@ export function Scheduler() {
             {selectedTargets.length === 0 && <small className="mt-2 block text-sm" style={{color: '#fca5a5'}}>Select at least one destination</small>}
           </div>
 
+          {mediaAssets.length > 0 && (
+            <div className="mb-4">
+              <h4 style={{ marginBottom: '0.5rem' }}>Attach Media</h4>
+              <div className="flex gap-2" style={{ overflowX: 'auto', paddingBottom: '0.5rem' }}>
+                {mediaAssets.map(asset => {
+                  const isSelected = selectedMedia.includes(asset.id);
+                  return (
+                    <div 
+                      key={asset.id} 
+                      onClick={() => handleToggleMedia(asset.id)}
+                      style={{
+                         minWidth: 80, maxWidth: 80, height: 80, borderRadius: 8, overflow: 'hidden', cursor: 'pointer',
+                         border: isSelected ? '2px solid var(--highlight-blue)' : '2px solid transparent',
+                         background: 'var(--bg-primary)'
+                      }}
+                    >
+                      {asset.contentType.startsWith('image/') ? (
+                        <img src={`${apiBaseUrl}${asset.publicUrl}`} style={{width: '100%', height: '100%', objectFit: 'cover'}} />
+                      ) : (
+                        <div className="flex items-center justify-center h-full text-xs text-center p-1" style={{color:'var(--text-secondary)'}}>
+                          {asset.originalFileName}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="mb-4">
             <textarea
               className="glass-input"
@@ -132,14 +180,69 @@ export function Scheduler() {
               <p style={{ whiteSpace: 'pre-wrap', margin: 0, fontSize: '0.95rem' }}>
                 {textContent || <span style={{ color: 'var(--text-secondary)', fontStyle: 'italic' }}>Your post preview will appear here...</span>}
               </p>
+              {selectedMedia.length > 0 && (
+                <div className="mt-4 flex gap-2 flex-wrap">
+                  {selectedMedia.map(mid => {
+                    const ast = mediaAssets.find(m => m.id === mid);
+                    if (!ast) return null;
+                    if (!ast.contentType.startsWith('image/')) return (
+                       <div key={mid} style={{width:80,height:80,background:'rgba(255,255,255,0.1)',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',fontSize:'10px',textAlign:'center',overflow:'hidden'}}>{ast.originalFileName}</div>
+                    );
+                    return <img key={mid} src={`${apiBaseUrl}${ast.publicUrl}`} style={{width: 80, height: 80, objectFit: 'cover', borderRadius: '8px'}} />;
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>
       </div>
 
       <div className="card mt-6">
-        <h3>Queue</h3>
-        {scheduledPosts.length === 0 ? (
+        <div className="flex justify-between items-center mb-4">
+          <h3 style={{ margin: 0 }}>Queue</h3>
+          <div className="flex gap-2">
+            <button className={`btn-secondary ${viewMode === 'list' ? 'active' : ''}`} onClick={() => setViewMode('list')} style={viewMode === 'list' ? {borderColor: 'var(--highlight-blue)', color:'var(--highlight-blue)'} : {}}>List View</button>
+            <button className={`btn-secondary ${viewMode === 'calendar' ? 'active' : ''}`} onClick={() => setViewMode('calendar')} style={viewMode === 'calendar' ? {borderColor: 'var(--highlight-blue)', color:'var(--highlight-blue)'} : {}}>Calendar View</button>
+          </div>
+        </div>
+
+        {viewMode === 'calendar' && (
+          <div className="mb-6">
+             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px', textAlign: 'center', marginBottom: '8px', fontWeight: 'bold' }}>
+               <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+             </div>
+             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
+                {Array.from({length: firstDayOfMonth}).map((_, i) => <div key={`blank-${i}`} />)}
+                {Array.from({length: daysInMonth}).map((_, i) => {
+                   const day = i + 1;
+                   const dateString = new Date(currentYear, currentMonth, day).toDateString();
+                   const postsOnDay = scheduledPosts.filter(p => new Date(p.scheduledAtUtc).toDateString() === dateString);
+                   const isSelected = selectedDate === dateString;
+                   return (
+                     <div 
+                       key={day}
+                       onClick={() => setSelectedDate(isSelected ? null : dateString)}
+                       style={{ 
+                         minHeight: '80px', background: isSelected ? 'rgba(51, 183, 255, 0.2)' : 'rgba(255,255,255,0.05)', 
+                         borderRadius: '8px', padding: '8px', cursor: 'pointer',
+                         border: isSelected ? '1px solid var(--highlight-blue)' : '1px solid transparent'
+                       }}
+                     >
+                        <div style={{ opacity: 0.8, fontSize: '0.85rem' }}>{day}</div>
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {postsOnDay.map((p, idx) => (
+                             <div key={idx} style={{width: 6, height: 6, borderRadius: '50%', background: p.status === 'Published' ? '#4ade80' : 'var(--highlight-blue)'}} title={p.textContent} />
+                          ))}
+                        </div>
+                     </div>
+                   );
+                })}
+             </div>
+             {selectedDate && <div className="mt-4 font-bold text-sm" style={{color: 'var(--highlight-blue)'}}>Viewing posts for: {selectedDate}</div>}
+          </div>
+        )}
+
+        {filteredQueue.length === 0 ? (
           <p className="text-sm">No scheduled posts.</p>
         ) : (
           <table className="table">
@@ -152,7 +255,7 @@ export function Scheduler() {
               </tr>
             </thead>
             <tbody>
-              {scheduledPosts.map(post => (
+              {filteredQueue.map(post => (
                 <tr key={post.id}>
                   <td style={{ maxWidth: 300, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{post.textContent}</td>
                   <td>{post.targets.map(t => t.platform).join(', ')}</td>

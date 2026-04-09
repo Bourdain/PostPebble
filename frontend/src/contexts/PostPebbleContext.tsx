@@ -41,6 +41,7 @@ export type MediaAsset = {
   contentType: string;
   sizeBytes: number;
   publicUrl: string;
+  tags?: string[];
 };
 
 export type StripeWebhookEvent = {
@@ -87,7 +88,9 @@ type PostPebbleContextType = {
   createScheduledPost: (textContent: string, scheduledAtUtc: string, targets: { platform: string; externalAccountId: string }[], mediaAssetIds: string[]) => Promise<void>;
   loadScheduledPosts: () => Promise<void>;
   loadMedia: () => Promise<void>;
-  uploadMedia: (file: File) => Promise<void>;
+  uploadMedia: (file: File, tags?: string) => Promise<void>;
+  updateMediaTags: (mediaId: string, tags: string[]) => Promise<void>;
+  deleteMedia: (mediaId: string) => Promise<void>;
   settlePost: (postId: string, outcome: "success" | "failed") => Promise<void>;
   markPublishing: (postId: string) => Promise<void>;
 };
@@ -358,12 +361,15 @@ export function PostPebbleProvider({ children }: { children: React.ReactNode }) 
     setStatus("Media loaded.");
   }
 
-  async function uploadMedia(file: File) {
+  async function uploadMedia(file: File, tags?: string) {
     if (!auth || !activeTenant) return;
 
     const form = new FormData();
     form.append("tenantId", activeTenant.tenantId);
     form.append("file", file);
+    if (tags) {
+      form.append("tags", tags);
+    }
 
     setStatus("Uploading media...");
     const response = await fetch(`${apiBaseUrl}/api/v1/media/upload`, {
@@ -379,6 +385,46 @@ export function PostPebbleProvider({ children }: { children: React.ReactNode }) 
 
     await loadMedia();
     setStatus("Media uploaded.");
+  }
+
+  async function updateMediaTags(mediaId: string, tags: string[]) {
+    if (!auth || !activeTenant) return;
+
+    setStatus("Updating tags...");
+    const response = await fetch(`${apiBaseUrl}/api/v1/media/${activeTenant.tenantId}/${mediaId}/tags`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${auth.accessToken}`,
+      },
+      body: JSON.stringify({ tags }),
+    });
+
+    if (!response.ok) {
+      setStatus(`Update tags failed (${response.status}).`);
+      return;
+    }
+
+    await loadMedia();
+    setStatus("Tags updated.");
+  }
+
+  async function deleteMedia(mediaId: string) {
+    if (!auth || !activeTenant) return;
+
+    setStatus("Deleting media...");
+    const response = await fetch(`${apiBaseUrl}/api/v1/media/${activeTenant.tenantId}/${mediaId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${auth.accessToken}` },
+    });
+
+    if (!response.ok) {
+      setStatus(`Delete failed (${response.status}).`);
+      return;
+    }
+
+    await loadMedia();
+    setStatus("Media deleted.");
   }
 
   async function settlePost(postId: string, outcome: "success" | "failed") {
@@ -450,6 +496,8 @@ export function PostPebbleProvider({ children }: { children: React.ReactNode }) 
         loadScheduledPosts,
         loadMedia,
         uploadMedia,
+        updateMediaTags,
+        deleteMedia,
         settlePost,
         markPublishing,
       }}

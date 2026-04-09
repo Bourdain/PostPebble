@@ -122,6 +122,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             builder.Property(x => x.SizeBytes).HasColumnName("sizebytes");
             builder.Property(x => x.PublicUrl).HasColumnName("publicurl").HasMaxLength(500).IsRequired();
             builder.Property(x => x.CreatedAtUtc).HasColumnName("createdatutc");
+            builder.Property(x => x.Tags).HasColumnName("tags");
             builder.HasOne(x => x.Tenant).WithMany().HasForeignKey(x => x.TenantId);
             builder.HasOne(x => x.UploadedByUser).WithMany().HasForeignKey(x => x.UploadedByUserId);
         });

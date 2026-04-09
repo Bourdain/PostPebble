@@ -22,6 +22,7 @@ public sealed class MediaDbContext(DbContextOptions<MediaDbContext> options) : D
             builder.Property(x => x.SizeBytes).HasColumnName("sizebytes");
             builder.Property(x => x.PublicUrl).HasColumnName("publicurl").HasMaxLength(500).IsRequired();
             builder.Property(x => x.CreatedAtUtc).HasColumnName("createdatutc");
+            builder.Property(x => x.Tags).HasColumnName("tags");
             builder.Ignore(x => x.Tenant);
             builder.Ignore(x => x.UploadedByUser);
             builder.Ignore(x => x.ScheduledPostLinks);
