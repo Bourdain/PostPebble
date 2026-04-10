@@ -6,5 +6,6 @@ public enum ScheduledPostStatus
     Publishing = 1,
     Published = 2,
     Failed = 3,
-    Refunded = 4
+    Refunded = 4,
+    Cancelled = 5
 }

@@ -10,3 +10,10 @@ public sealed record CreateScheduledPostRequest(
     List<PostTargetRequest> Targets,
     List<Guid>? MediaAssetIds = null
 );
+
+public sealed record UpdateScheduledPostRequest(
+    string? TextContent = null,
+    DateTime? ScheduledAtUtc = null,
+    List<PostTargetRequest>? Targets = null,
+    List<Guid>? MediaAssetIds = null
+);

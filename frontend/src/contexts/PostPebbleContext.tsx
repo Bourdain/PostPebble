@@ -29,8 +29,11 @@ export type ScheduledPost = {
   textContent: string;
   scheduledAtUtc: string;
   reservationId: string;
-  status: "Queued" | "Publishing" | "Published" | "Failed" | "Refunded";
+  status: "Queued" | "Publishing" | "Published" | "Failed" | "Refunded" | "Cancelled";
   failureReason?: string | null;
+  retryCount: number;
+  maxRetries: number;
+  nextRetryAtUtc?: string | null;
   targets: { platform: string; externalAccountId: string }[];
   media?: { mediaAssetId: string; fileName: string; publicUrl: string; contentType: string }[];
 };
@@ -63,6 +66,19 @@ export type LinkedInConnection = {
   updatedAtUtc: string;
 };
 
+export type AnalyticsSummary = {
+  totalPosts: number;
+  publishedLast7Days: number;
+  publishedLast30Days: number;
+  failedLast30Days: number;
+  queuedCount: number;
+  successRate: number;
+  creditsPurchasedLast30Days: number;
+  creditsConsumedLast30Days: number;
+  postsPerDay: { date: string; count: number }[];
+  platformBreakdown: { platform: string; count: number }[];
+};
+
 type PostPebbleContextType = {
   apiBaseUrl: string;
   auth: AuthResponse | null;
@@ -75,6 +91,7 @@ type PostPebbleContextType = {
   mediaAssets: MediaAsset[];
   webhookEvents: StripeWebhookEvent[];
   linkedInConnections: LinkedInConnection[];
+  analytics: AnalyticsSummary | null;
   status: string;
   setStatus: (status: string) => void;
   register: (email: string, password: string, tenantName: string) => Promise<void>;
@@ -86,6 +103,8 @@ type PostPebbleContextType = {
   saveLinkedInMemberUrn: (urn: string) => Promise<void>;
   buyCredits: () => Promise<void>;
   createScheduledPost: (textContent: string, scheduledAtUtc: string, targets: { platform: string; externalAccountId: string }[], mediaAssetIds: string[]) => Promise<void>;
+  updateScheduledPost: (postId: string, data: { textContent?: string; scheduledAtUtc?: string; targets?: { platform: string; externalAccountId: string }[] }) => Promise<void>;
+  cancelScheduledPost: (postId: string) => Promise<void>;
   loadScheduledPosts: () => Promise<void>;
   loadMedia: () => Promise<void>;
   uploadMedia: (file: File, tags?: string) => Promise<void>;
@@ -93,6 +112,7 @@ type PostPebbleContextType = {
   deleteMedia: (mediaId: string) => Promise<void>;
   settlePost: (postId: string, outcome: "success" | "failed") => Promise<void>;
   markPublishing: (postId: string) => Promise<void>;
+  loadAnalytics: () => Promise<void>;
 };
 
 const PostPebbleContext = createContext<PostPebbleContextType | null>(null);
@@ -107,6 +127,7 @@ export function PostPebbleProvider({ children }: { children: React.ReactNode }) 
   const [mediaAssets, setMediaAssets] = useState<MediaAsset[]>([]);
   const [webhookEvents, setWebhookEvents] = useState<StripeWebhookEvent[]>([]);
   const [linkedInConnections, setLinkedInConnections] = useState<LinkedInConnection[]>([]);
+  const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null);
 
   const activeTenant = useMemo(() => auth?.tenants?.[0] ?? null, [auth]);
 
@@ -124,6 +145,7 @@ export function PostPebbleProvider({ children }: { children: React.ReactNode }) 
       void loadMediaWithToken(parsed.accessToken, tenantId);
       void loadScheduledPostsWithToken(parsed.accessToken, tenantId);
       void loadLinkedInConnectionsWithToken(parsed.accessToken, tenantId);
+      void loadAnalyticsWithToken(parsed.accessToken, tenantId);
       setStatus("Session restored.");
     } catch {
       localStorage.removeItem(authStorageKey);
@@ -169,6 +191,7 @@ export function PostPebbleProvider({ children }: { children: React.ReactNode }) 
     await loadMediaWithToken(json.accessToken, json.tenants[0]?.tenantId);
     await loadScheduledPostsWithToken(json.accessToken, json.tenants[0]?.tenantId);
     await loadLinkedInConnectionsWithToken(json.accessToken, json.tenants[0]?.tenantId);
+    await loadAnalyticsWithToken(json.accessToken, json.tenants[0]?.tenantId);
   }
 
   async function loadWalletWithToken(token: string, tenantId?: string) {
@@ -264,6 +287,7 @@ export function PostPebbleProvider({ children }: { children: React.ReactNode }) 
     setScheduledPosts([]);
     setLinkedInConnections([]);
     setWebhookEvents([]);
+    setAnalytics(null);
     localStorage.removeItem(authStorageKey);
     setStatus("Logged out.");
   }
@@ -324,6 +348,47 @@ export function PostPebbleProvider({ children }: { children: React.ReactNode }) 
     }
 
     setStatus("Post scheduled and credits reserved.");
+    await loadWallet();
+    await loadScheduledPosts();
+  }
+
+  async function updateScheduledPost(postId: string, data: { textContent?: string; scheduledAtUtc?: string; targets?: { platform: string; externalAccountId: string }[] }) {
+    if (!auth) return;
+
+    setStatus("Updating post...");
+    const response = await fetch(`${apiBaseUrl}/api/v1/scheduler/posts/${postId}`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${auth.accessToken}`,
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      setStatus(`Update failed (${response.status}).`);
+      return;
+    }
+
+    setStatus("Post updated.");
+    await loadScheduledPosts();
+  }
+
+  async function cancelScheduledPost(postId: string) {
+    if (!auth) return;
+
+    setStatus("Cancelling post...");
+    const response = await fetch(`${apiBaseUrl}/api/v1/scheduler/posts/${postId}/mark-cancelled`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${auth.accessToken}` },
+    });
+
+    if (!response.ok) {
+      setStatus(`Cancel failed (${response.status}).`);
+      return;
+    }
+
+    setStatus("Post cancelled. Credits returned.");
     await loadWallet();
     await loadScheduledPosts();
   }
@@ -468,6 +533,21 @@ export function PostPebbleProvider({ children }: { children: React.ReactNode }) 
     await loadScheduledPosts();
   }
 
+  async function loadAnalyticsWithToken(token: string, tenantId?: string) {
+    if (!tenantId) return;
+    const response = await fetch(`${apiBaseUrl}/api/v1/analytics/${tenantId}/summary`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (response.ok) {
+      setAnalytics((await response.json()) as AnalyticsSummary);
+    }
+  }
+
+  async function loadAnalytics() {
+    if (!auth || !activeTenant) return;
+    await loadAnalyticsWithToken(auth.accessToken, activeTenant.tenantId);
+  }
+
   return (
     <PostPebbleContext.Provider
       value={{
@@ -482,6 +562,7 @@ export function PostPebbleProvider({ children }: { children: React.ReactNode }) 
         mediaAssets,
         webhookEvents,
         linkedInConnections,
+        analytics,
         status,
         setStatus,
         register,
@@ -493,6 +574,8 @@ export function PostPebbleProvider({ children }: { children: React.ReactNode }) 
         saveLinkedInMemberUrn,
         buyCredits,
         createScheduledPost,
+        updateScheduledPost,
+        cancelScheduledPost,
         loadScheduledPosts,
         loadMedia,
         uploadMedia,
@@ -500,6 +583,7 @@ export function PostPebbleProvider({ children }: { children: React.ReactNode }) 
         deleteMedia,
         settlePost,
         markPublishing,
+        loadAnalytics,
       }}
     >
       {children}

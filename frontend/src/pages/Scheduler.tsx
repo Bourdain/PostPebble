@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { usePostPebble } from '../contexts/PostPebbleContext';
-import { Send, Image as ImageIcon } from 'lucide-react';
+import { Send, Image as ImageIcon, X, Pencil, RotateCcw } from 'lucide-react';
 
 
 export function Scheduler() {
   const { 
-    scheduledPosts, loadScheduledPosts, createScheduledPost, 
+    scheduledPosts, loadScheduledPosts, createScheduledPost, updateScheduledPost, cancelScheduledPost,
     linkedInConnections, loadLinkedInConnections,
     mediaAssets, loadMedia, apiBaseUrl
   } = usePostPebble();
@@ -18,6 +18,11 @@ export function Scheduler() {
   
   const [viewMode, setViewMode] = useState<'list'|'calendar'>('list');
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+
+  // Edit state
+  const [editingPostId, setEditingPostId] = useState<string | null>(null);
+  const [editText, setEditText] = useState('');
+  const [editDate, setEditDate] = useState('');
 
   useEffect(() => {
     loadScheduledPosts();
@@ -46,6 +51,30 @@ export function Scheduler() {
     setIsSubmitting(false);
     setTextContent('');
     setSelectedMedia([]);
+  };
+
+  const handleCancel = async (postId: string) => {
+    if (!window.confirm('Cancel this post? Credits will be returned.')) return;
+    await cancelScheduledPost(postId);
+  };
+
+  const handleStartEdit = (post: typeof scheduledPosts[0]) => {
+    setEditingPostId(post.id);
+    setEditText(post.textContent);
+    setEditDate(new Date(post.scheduledAtUtc).toISOString().slice(0, 16));
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingPostId) return;
+    await updateScheduledPost(editingPostId, {
+      textContent: editText,
+      scheduledAtUtc: new Date(editDate).toISOString(),
+    });
+    setEditingPostId(null);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingPostId(null);
   };
 
   const today = new Date();
@@ -252,15 +281,89 @@ export function Scheduler() {
                 <th>Targets</th>
                 <th>When</th>
                 <th>Status</th>
+                <th>Retry</th>
+                <th style={{ width: '100px' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {filteredQueue.map(post => (
                 <tr key={post.id}>
-                  <td style={{ maxWidth: 300, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{post.textContent}</td>
+                  <td style={{ maxWidth: 250 }}>
+                    {editingPostId === post.id ? (
+                      <textarea
+                        className="glass-input"
+                        rows={3}
+                        value={editText}
+                        onChange={(e) => setEditText(e.target.value)}
+                        style={{ fontSize: '0.85rem', resize: 'vertical' }}
+                      />
+                    ) : (
+                      <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{post.textContent}</div>
+                    )}
+                  </td>
                   <td>{post.targets.map(t => t.platform).join(', ')}</td>
-                  <td>{new Date(post.scheduledAtUtc).toLocaleString()}</td>
-                  <td><span className={`statusBadge ${post.status.toLowerCase()}`}>{post.status}</span></td>
+                  <td>
+                    {editingPostId === post.id ? (
+                      <input
+                        type="datetime-local"
+                        className="glass-input"
+                        value={editDate}
+                        onChange={(e) => setEditDate(e.target.value)}
+                        style={{ fontSize: '0.85rem' }}
+                      />
+                    ) : (
+                      new Date(post.scheduledAtUtc).toLocaleString()
+                    )}
+                  </td>
+                  <td>
+                    <span className={`statusBadge ${post.status.toLowerCase()}`}>{post.status}</span>
+                    {post.failureReason && post.status !== 'Published' && (
+                      <div style={{ marginTop: '4px', color: '#fca5a5', fontSize: '0.7rem', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={post.failureReason}>
+                        {post.failureReason}
+                      </div>
+                    )}
+                  </td>
+                  <td>
+                    {post.retryCount > 0 ? (
+                      <div className="flex items-center gap-1" style={{ fontSize: '0.75rem' }}>
+                        <RotateCcw size={12} />
+                        <span>{post.retryCount}/{post.maxRetries}</span>
+                        {post.nextRetryAtUtc && post.status === 'Queued' && (
+                          <div style={{ color: 'var(--text-secondary)', fontSize: '0.65rem' }}>
+                            Next: {new Date(post.nextRetryAtUtc).toLocaleTimeString()}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>—</span>
+                    )}
+                  </td>
+                  <td>
+                    {post.status === 'Queued' && editingPostId !== post.id && (
+                      <div className="flex gap-1">
+                        <button
+                          onClick={() => handleStartEdit(post)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--highlight-blue)', padding: '4px' }}
+                          title="Edit post"
+                        >
+                          <Pencil size={16} />
+                        </button>
+                        <button
+                          onClick={() => handleCancel(post.id)}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: '4px' }}
+                          title="Cancel post"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                    )}
+                    {editingPostId === post.id && (
+                      <div className="flex gap-1">
+                        <button className="btn-primary" onClick={handleSaveEdit} style={{ padding: '4px 10px', fontSize: '0.75rem' }}>Save</button>
+                        <button className="btn-secondary" onClick={handleCancelEdit} style={{ padding: '4px 10px', fontSize: '0.75rem' }}>Cancel</button>
+                      </div>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

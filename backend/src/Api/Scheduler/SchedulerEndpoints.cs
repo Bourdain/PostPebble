@@ -13,12 +13,56 @@ public static class SchedulerEndpoints
         var group = app.MapGroup("/api/v1/scheduler").RequireAuthorization();
         group.MapPost("/posts", CreateScheduledPostAsync);
         group.MapGet("/posts/{tenantId:guid}", ListScheduledPostsAsync);
+        group.MapPut("/posts/{postId:guid}", UpdateScheduledPostAsync);
         group.MapPost("/posts/{postId:guid}/mark-publishing", MarkPublishingAsync);
         group.MapPost("/posts/{postId:guid}/mark-success", MarkSuccessAsync);
         group.MapPost("/posts/{postId:guid}/mark-failed", MarkFailedAsync);
         group.MapPost("/tenants/{tenantId:guid}/reconcile", ReconcileReservationsAsync);
+        group.MapPost("/posts/{postId:guid}/mark-cancelled", MarkCancelledAsync);
         return app;
     }
+
+    private static async Task<IResult> MarkCancelledAsync(
+        Guid postId,
+        ClaimsPrincipal principal,
+        SchedulerDbContext dbContext,
+        ITenantAccessService tenantAccessService,
+        IReservationLedgerService reservationLedgerService,
+        CancellationToken cancellationToken)
+    {
+        
+        var userId = CurrentUserProvider.GetUserId(principal);
+        if (userId is null)
+        {
+            return Results.Unauthorized();
+        }
+
+        var post = await dbContext.ScheduledPosts.SingleOrDefaultAsync(x => x.Id == postId, cancellationToken);
+        if (post is null)
+        {
+            return Results.NotFound();
+        }
+
+        var isAdmin = await tenantAccessService.IsTenantAdminAsync(userId.Value, post.TenantId, cancellationToken);
+        if (!isAdmin)
+        {
+            return Results.Forbid();
+        }
+
+        var released = await reservationLedgerService.ReleaseReservationAsync(post.ReservationId, $"publish_failed:{postId}", cancellationToken);
+        if (!released)
+        {
+            return Results.Conflict("Reservation already settled or missing.");
+        }
+
+        post.Status = ScheduledPostStatus.Cancelled;
+        post.SettledAtUtc = DateTime.UtcNow;
+        post.FailureReason = $"Publish cancelled by user ({userId}).";
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return Results.Ok(new { postId, status = "cancelled", creditsReleased = true });
+    }
+
 
     private static async Task<IResult> CreateScheduledPostAsync(
         CreateScheduledPostRequest request,
@@ -108,6 +152,96 @@ public static class SchedulerEndpoints
         });
     }
 
+    private static async Task<IResult> UpdateScheduledPostAsync(
+        Guid postId,
+        UpdateScheduledPostRequest request,
+        ClaimsPrincipal principal,
+        SchedulerDbContext schedulerDbContext,
+        MediaDbContext mediaDbContext,
+        ITenantAccessService tenantAccessService,
+        CancellationToken cancellationToken)
+    {
+        var userId = CurrentUserProvider.GetUserId(principal);
+        if (userId is null)
+        {
+            return Results.Unauthorized();
+        }
+
+        var post = await schedulerDbContext.ScheduledPosts
+            .Include(x => x.Targets)
+            .Include(x => x.MediaLinks)
+            .SingleOrDefaultAsync(x => x.Id == postId, cancellationToken);
+        if (post is null)
+        {
+            return Results.NotFound();
+        }
+
+        var isMember = await tenantAccessService.IsTenantMemberAsync(userId.Value, post.TenantId, cancellationToken);
+        if (!isMember)
+        {
+            return Results.Forbid();
+        }
+
+        if (post.Status != ScheduledPostStatus.Queued)
+        {
+            return Results.Conflict("Only queued posts can be edited.");
+        }
+
+        if (request.TextContent is not null)
+        {
+            post.TextContent = request.TextContent.Trim();
+        }
+
+        if (request.ScheduledAtUtc.HasValue)
+        {
+            post.ScheduledAtUtc = request.ScheduledAtUtc.Value;
+        }
+
+        if (request.Targets is { Count: > 0 })
+        {
+            schedulerDbContext.PostTargets.RemoveRange(post.Targets);
+            post.Targets = request.Targets
+                .Select(x => new PostTarget
+                {
+                    Platform = x.Platform,
+                    ExternalAccountId = x.ExternalAccountId.Trim()
+                })
+                .ToList();
+        }
+
+        if (request.MediaAssetIds is not null)
+        {
+            schedulerDbContext.ScheduledPostMediaLinks.RemoveRange(post.MediaLinks);
+
+            if (request.MediaAssetIds.Count > 0)
+            {
+                var validMedia = await mediaDbContext.MediaAssets
+                    .Where(x => x.TenantId == post.TenantId && request.MediaAssetIds.Contains(x.Id))
+                    .Select(x => x.Id)
+                    .ToListAsync(cancellationToken);
+
+                post.MediaLinks = validMedia
+                    .Select(id => new ScheduledPostMedia { MediaAssetId = id })
+                    .ToList();
+            }
+            else
+            {
+                post.MediaLinks = [];
+            }
+        }
+
+        await schedulerDbContext.SaveChangesAsync(cancellationToken);
+
+        return Results.Ok(new
+        {
+            post.Id,
+            post.TextContent,
+            post.ScheduledAtUtc,
+            targets = post.Targets.Select(t => new { platform = t.Platform.ToString(), t.ExternalAccountId }),
+            mediaCount = post.MediaLinks.Count
+        });
+    }
+
     private static async Task<IResult> ListScheduledPostsAsync(
         Guid tenantId,
         ClaimsPrincipal principal,
@@ -160,6 +294,9 @@ public static class SchedulerEndpoints
             status = x.Status.ToString(),
             x.FailureReason,
             x.SettledAtUtc,
+            x.RetryCount,
+            x.MaxRetries,
+            x.NextRetryAtUtc,
             targets = x.Targets.Select(t => new { platform = t.Platform.ToString(), t.ExternalAccountId }),
             media = x.MediaLinks
                 .Select(m => mediaById.TryGetValue(m.MediaAssetId, out var media) ? new

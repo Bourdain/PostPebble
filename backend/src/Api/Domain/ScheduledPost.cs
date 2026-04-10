@@ -13,6 +13,11 @@ public sealed class ScheduledPost
     public string? FailureReason { get; set; }
     public DateTime? SettledAtUtc { get; set; }
 
+    // Retry / backoff
+    public int RetryCount { get; set; }
+    public int MaxRetries { get; set; } = 3;
+    public DateTime? NextRetryAtUtc { get; set; }
+
     public Tenant? Tenant { get; set; }
     public User? CreatedByUser { get; set; }
     public CreditReservation? Reservation { get; set; }
