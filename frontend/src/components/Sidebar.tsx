@@ -1,6 +1,6 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, Calendar, Image as ImageIcon, CreditCard, Link as LinkIcon, LogOut } from 'lucide-react';
+import { LayoutDashboard, Calendar, Image as ImageIcon, CreditCard, Link as LinkIcon, LogOut, Settings as SettingsIcon } from 'lucide-react';
 import { usePostPebble } from '../contexts/PostPebbleContext';
 
 import { Logo } from './Logo';
@@ -39,6 +39,10 @@ export function Sidebar() {
         <NavLink to="/billing" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
           <CreditCard size={20} />
           Billing
+        </NavLink>
+        <NavLink to="/settings" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+          <SettingsIcon size={20} />
+          Settings
         </NavLink>
       </nav>
 

@@ -8,6 +8,7 @@ import { Library } from './pages/Library';
 import { Scheduler } from './pages/Scheduler';
 import { Integrations } from './pages/Integrations';
 import { Billing } from './pages/Billing';
+import { Settings } from './pages/Settings';
 
 export default function App() {
   return (
@@ -21,6 +22,7 @@ export default function App() {
             <Route path="/scheduler" element={<Scheduler />} />
             <Route path="/integrations" element={<Integrations />} />
             <Route path="/billing" element={<Billing />} />
+            <Route path="/settings" element={<Settings />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Route>
         </Routes>
