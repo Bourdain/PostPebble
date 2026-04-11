@@ -63,7 +63,7 @@ public static class TenantEndpoints
         var email = request.Email.Trim().ToLowerInvariant();
         var role = Enum.TryParse<TenantRole>(request.Role, true, out var parsedRole)
             ? parsedRole
-            : TenantRole.Viewer;
+            : TenantRole.Drafter;
 
         var user = await dbContext.Users.SingleOrDefaultAsync(x => x.Email == email, cancellationToken);
         if (user is null)
@@ -96,4 +96,4 @@ public static class TenantEndpoints
     }
 }
 
-public sealed record InviteMemberRequest(string Email, string Role = "Viewer");
+public sealed record InviteMemberRequest(string Email, string Role = "Drafter");

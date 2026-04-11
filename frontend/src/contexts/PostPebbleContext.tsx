@@ -29,7 +29,7 @@ export type ScheduledPost = {
   textContent: string;
   scheduledAtUtc: string;
   reservationId: string;
-  status: "Queued" | "Publishing" | "Published" | "Failed" | "Refunded" | "Cancelled";
+  status: "Draft" | "Queued" | "Publishing" | "Published" | "Failed" | "Refunded" | "Cancelled";
   failureReason?: string | null;
   retryCount: number;
   maxRetries: number;
@@ -102,7 +102,7 @@ type PostPebbleContextType = {
   connectLinkedIn: () => Promise<void>;
   saveLinkedInMemberUrn: (urn: string) => Promise<void>;
   buyCredits: () => Promise<void>;
-  createScheduledPost: (textContent: string, scheduledAtUtc: string, targets: { platform: string; externalAccountId: string }[], mediaAssetIds: string[]) => Promise<void>;
+  createScheduledPost: (textContent: string, scheduledAtUtc: string, targets: { platform: string; externalAccountId: string }[], mediaAssetIds: string[], queueImmediately?: boolean) => Promise<void>;
   updateScheduledPost: (postId: string, data: { textContent?: string; scheduledAtUtc?: string; targets?: { platform: string; externalAccountId: string }[] }) => Promise<void>;
   cancelScheduledPost: (postId: string) => Promise<void>;
   loadScheduledPosts: () => Promise<void>;
@@ -318,7 +318,7 @@ export function PostPebbleProvider({ children }: { children: React.ReactNode }) 
     window.location.href = json.sessionUrl;
   }
 
-  async function createScheduledPost(textContent: string, scheduledAtUtc: string, targets: { platform: string; externalAccountId: string }[], mediaAssetIds: string[]) {
+  async function createScheduledPost(textContent: string, scheduledAtUtc: string, targets: { platform: string; externalAccountId: string }[], mediaAssetIds: string[], queueImmediately: boolean = false) {
     if (!auth || !activeTenant) return;
 
     if (targets.length === 0) {
@@ -326,7 +326,7 @@ export function PostPebbleProvider({ children }: { children: React.ReactNode }) 
       return;
     }
 
-    setStatus("Scheduling post...");
+    setStatus(queueImmediately ? "Scheduling post..." : "Creating draft...");
     const response = await fetch(`${apiBaseUrl}/api/v1/scheduler/posts`, {
       method: "POST",
       headers: {
@@ -339,15 +339,16 @@ export function PostPebbleProvider({ children }: { children: React.ReactNode }) 
         scheduledAtUtc,
         targets,
         mediaAssetIds,
+        queueImmediately
       }),
     });
 
     if (!response.ok) {
-      setStatus(`Schedule failed (${response.status}).`);
+      setStatus(queueImmediately ? `Schedule failed (${response.status}).` : `Draft failed (${response.status}).`);
       return;
     }
 
-    setStatus("Post scheduled and credits reserved.");
+    setStatus(queueImmediately ? "Post scheduled and credits reserved." : "Draft created.");
     await loadWallet();
     await loadScheduledPosts();
   }

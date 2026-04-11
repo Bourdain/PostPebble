@@ -7,7 +7,7 @@ export function Scheduler() {
   const { 
     scheduledPosts, loadScheduledPosts, createScheduledPost, updateScheduledPost, cancelScheduledPost,
     linkedInConnections, loadLinkedInConnections,
-    mediaAssets, loadMedia, apiBaseUrl
+    mediaAssets, loadMedia, apiBaseUrl, activeTenant, auth
   } = usePostPebble();
 
   const [textContent, setTextContent] = useState('');
@@ -15,6 +15,7 @@ export function Scheduler() {
   const [selectedTargets, setSelectedTargets] = useState<{platform: string; externalAccountId: string}[]>([]);
   const [selectedMedia, setSelectedMedia] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [queueImmediately, setQueueImmediately] = useState(false);
   
   const [viewMode, setViewMode] = useState<'list'|'calendar'>('list');
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -23,6 +24,8 @@ export function Scheduler() {
   const [editingPostId, setEditingPostId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
   const [editDate, setEditDate] = useState('');
+
+  const isReviewerOrHigher = activeTenant?.role === 'Owner' || activeTenant?.role === 'Admin' || activeTenant?.role === 'Reviewer';
 
   useEffect(() => {
     loadScheduledPosts();
@@ -47,10 +50,27 @@ export function Scheduler() {
     if (selectedTargets.length === 0) return;
     setIsSubmitting(true);
     const dateObj = new Date(scheduledAtUtc);
-    await createScheduledPost(textContent, dateObj.toISOString(), selectedTargets, selectedMedia);
+    await createScheduledPost(textContent, dateObj.toISOString(), selectedTargets, selectedMedia, queueImmediately);
     setIsSubmitting(false);
     setTextContent('');
     setSelectedMedia([]);
+  };
+
+  const handleApprove = async (postId: string) => {
+    if (!auth) return;
+    try {
+      const res = await fetch(`${apiBaseUrl}/api/v1/scheduler/posts/${postId}/approve`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${auth.accessToken}` }
+      });
+      if (res.ok) {
+        await loadScheduledPosts();
+      } else {
+        alert('Failed to approve post.');
+      }
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const handleCancel = async (postId: string) => {
@@ -174,22 +194,34 @@ export function Scheduler() {
             />
           </div>
 
-          <div className="flex gap-4 items-center">
-            <input 
-              type="datetime-local" 
-              className="glass-input"
-              style={{ flex: 1 }}
-              value={scheduledAtUtc}
-              onChange={(e) => setScheduledAtUtc(e.target.value)}
-            />
-            <button 
-              className="btn-primary flex items-center gap-2"
-              onClick={handleSchedule}
-              disabled={isSubmitting || selectedTargets.length === 0 || !textContent.trim()}
-            >
-              <Send size={18} />
-              Schedule Post
-            </button>
+          <div className="flex flex-col gap-4">
+            <div className="flex gap-4 items-center">
+              <input 
+                type="datetime-local" 
+                className="glass-input"
+                style={{ flex: 1 }}
+                value={scheduledAtUtc}
+                onChange={(e) => setScheduledAtUtc(e.target.value)}
+              />
+              <button 
+                className="btn-primary flex items-center gap-2"
+                onClick={handleSchedule}
+                disabled={isSubmitting || selectedTargets.length === 0 || !textContent.trim()}
+              >
+                <Send size={18} />
+                {queueImmediately ? 'Schedule Post' : 'Save Draft'}
+              </button>
+            </div>
+            {isReviewerOrHigher && (
+              <label className="flex items-center gap-2 text-sm" style={{ cursor: 'pointer' }}>
+                <input 
+                  type="checkbox" 
+                  checked={queueImmediately}
+                  onChange={(e) => setQueueImmediately(e.target.checked)}
+                />
+                Queue immediately (bypass draft)
+              </label>
+            )}
           </div>
         </div>
 
@@ -339,8 +371,17 @@ export function Scheduler() {
                     )}
                   </td>
                   <td>
-                    {post.status === 'Queued' && editingPostId !== post.id && (
-                      <div className="flex gap-1">
+                    {(post.status === 'Queued' || post.status === 'Draft') && editingPostId !== post.id && (
+                      <div className="flex gap-1 items-center">
+                        {post.status === 'Draft' && isReviewerOrHigher && (
+                          <button
+                            onClick={() => handleApprove(post.id)}
+                            style={{ background: 'var(--bg-secondary)', border: '1px solid #4ade80', cursor: 'pointer', color: '#4ade80', padding: '4px 8px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 'bold' }}
+                            title="Approve post"
+                          >
+                            Approve
+                          </button>
+                        )}
                         <button
                           onClick={() => handleStartEdit(post)}
                           style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--highlight-blue)', padding: '4px' }}

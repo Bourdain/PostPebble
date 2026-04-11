@@ -8,7 +8,8 @@ public sealed record CreateScheduledPostRequest(
     string TextContent,
     DateTime ScheduledAtUtc,
     List<PostTargetRequest> Targets,
-    List<Guid>? MediaAssetIds = null
+    List<Guid>? MediaAssetIds = null,
+    bool QueueImmediately = false
 );
 
 public sealed record UpdateScheduledPostRequest(

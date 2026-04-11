@@ -155,7 +155,10 @@ public sealed class SchedulerPublishWorker(
 
             if (successful)
             {
-                await reservationLedgerService.ConsumeReservationAsync(post.ReservationId, $"worker_success:{post.Id}", cancellationToken);
+                if (post.ReservationId.HasValue)
+                {
+                    await reservationLedgerService.ConsumeReservationAsync(post.ReservationId.Value, $"worker_success:{post.Id}", cancellationToken);
+                }
                 post.Status = ScheduledPostStatus.Published;
                 post.SettledAtUtc = DateTime.UtcNow;
                 post.FailureReason = null;
@@ -177,7 +180,10 @@ public sealed class SchedulerPublishWorker(
                 else
                 {
                     // All retries exhausted — refund credits
-                    await reservationLedgerService.ReleaseReservationAsync(post.ReservationId, $"worker_failed:{post.Id}", cancellationToken);
+                    if (post.ReservationId.HasValue)
+                    {
+                        await reservationLedgerService.ReleaseReservationAsync(post.ReservationId.Value, $"worker_failed:{post.Id}", cancellationToken);
+                    }
                     post.Status = ScheduledPostStatus.Refunded;
                     post.SettledAtUtc = DateTime.UtcNow;
                     post.FailureReason = failureReason ?? "Worker failed to publish after all retries.";

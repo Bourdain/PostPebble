@@ -49,10 +49,13 @@ public static class SchedulerEndpoints
             return Results.Forbid();
         }
 
-        var released = await reservationLedgerService.ReleaseReservationAsync(post.ReservationId, $"publish_failed:{postId}", cancellationToken);
-        if (!released)
+        if (post.ReservationId.HasValue)
         {
-            return Results.Conflict("Reservation already settled or missing.");
+            var released = await reservationLedgerService.ReleaseReservationAsync(post.ReservationId.Value, $"publish_failed:{postId}", cancellationToken);
+            if (!released)
+            {
+                return Results.Conflict("Reservation already settled or missing.");
+            }
         }
 
         post.Status = ScheduledPostStatus.Cancelled;
@@ -182,9 +185,9 @@ public static class SchedulerEndpoints
             return Results.Forbid();
         }
 
-        if (post.Status != ScheduledPostStatus.Queued)
+        if (post.Status != ScheduledPostStatus.Queued && post.Status != ScheduledPostStatus.Draft)
         {
-            return Results.Conflict("Only queued posts can be edited.");
+            return Results.Conflict("Only queued or draft posts can be edited.");
         }
 
         if (request.TextContent is not null)
@@ -373,10 +376,13 @@ public static class SchedulerEndpoints
             return Results.Forbid();
         }
 
-        var settled = await reservationLedgerService.ConsumeReservationAsync(post.ReservationId, $"publish_success:{postId}", cancellationToken);
-        if (!settled)
+        if (post.ReservationId.HasValue)
         {
-            return Results.Conflict("Reservation already settled or missing.");
+            var settled = await reservationLedgerService.ConsumeReservationAsync(post.ReservationId.Value, $"publish_success:{postId}", cancellationToken);
+            if (!settled)
+            {
+                return Results.Conflict("Reservation already settled or missing.");
+            }
         }
 
         post.Status = ScheduledPostStatus.Published;
@@ -414,10 +420,13 @@ public static class SchedulerEndpoints
             return Results.Forbid();
         }
 
-        var released = await reservationLedgerService.ReleaseReservationAsync(post.ReservationId, $"publish_failed:{postId}", cancellationToken);
-        if (!released)
+        if (post.ReservationId.HasValue)
         {
-            return Results.Conflict("Reservation already settled or missing.");
+            var released = await reservationLedgerService.ReleaseReservationAsync(post.ReservationId.Value, $"publish_failed:{postId}", cancellationToken);
+            if (!released)
+            {
+                return Results.Conflict("Reservation already settled or missing.");
+            }
         }
 
         post.Status = ScheduledPostStatus.Refunded;
@@ -457,14 +466,17 @@ public static class SchedulerEndpoints
         var releasedCount = 0;
         foreach (var post in stalePosts)
         {
-            var released = await reservationLedgerService.ReleaseReservationAsync(
-                post.ReservationId,
-                $"reconcile:{post.Id}",
-                cancellationToken
-            );
-            if (!released)
+            if (post.ReservationId.HasValue)
             {
-                continue;
+                var released = await reservationLedgerService.ReleaseReservationAsync(
+                    post.ReservationId.Value,
+                    $"reconcile:{post.Id}",
+                    cancellationToken
+                );
+                if (!released)
+                {
+                    continue;
+                }
             }
 
             post.Status = ScheduledPostStatus.Refunded;
