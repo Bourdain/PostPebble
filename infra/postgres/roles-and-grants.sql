@@ -24,19 +24,20 @@ GRANT USAGE ON SCHEMA public TO postpebble_scheduler;
 GRANT USAGE, CREATE ON SCHEMA public TO postpebble_migrator;
 REVOKE CREATE ON SCHEMA public FROM postpebble_api;
 
+-- API user: full CRUD on all current and future tables
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO postpebble_api;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO postpebble_api;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO postpebble_api;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO postpebble_api;
 
-GRANT SELECT, INSERT, UPDATE ON TABLE
-    scheduled_posts,
-    post_targets,
-    linkedin_connections,
-    credit_wallets,
-    credit_transactions,
-    credit_reservations
-TO postpebble_scheduler;
-
+-- Scheduler user: read/write on scheduler-related + read on media tables (current and future)
+GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA public TO postpebble_scheduler;
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO postpebble_scheduler;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT, INSERT, UPDATE ON TABLES TO postpebble_scheduler;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT USAGE, SELECT ON SEQUENCES TO postpebble_scheduler;
 
+-- Migrator: full privileges on all current and future tables
 GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO postpebble_migrator;
 GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO postpebble_migrator;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON TABLES TO postpebble_migrator;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL PRIVILEGES ON SEQUENCES TO postpebble_migrator;

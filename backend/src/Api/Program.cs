@@ -80,6 +80,7 @@ builder.Services.AddScoped<IReservationLedgerService>(sp => sp.GetRequiredServic
 builder.Services.AddScoped<StripeWebhookService>();
 builder.Services.AddScoped<IMediaStorage, LocalMediaStorage>();
 builder.Services.AddHttpClient<LinkedInOAuthService>();
+builder.Services.AddHttpClient<LinkedInPublisher>();
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
@@ -143,5 +144,6 @@ app.MapBillingEndpoints();
 app.MapSchedulerEndpoints();
 app.MapMediaEndpoints();
 app.MapLinkedInEndpoints();
+app.MapAnalyticsEndpoints();
 
 app.Run();

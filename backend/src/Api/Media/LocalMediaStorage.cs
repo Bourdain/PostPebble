@@ -1,6 +1,8 @@
+using Microsoft.Extensions.Hosting;
+
 namespace Api.Media;
 
-public sealed class LocalMediaStorage(IWebHostEnvironment environment) : IMediaStorage
+public sealed class LocalMediaStorage(IHostEnvironment environment) : IMediaStorage
 {
     public async Task<(string StoredFileName, string PublicUrl)> SaveAsync(
         Guid tenantId,
@@ -22,5 +24,20 @@ public sealed class LocalMediaStorage(IWebHostEnvironment environment) : IMediaS
 
         var publicUrl = $"/uploads/{tenantId}/{storedFileName}";
         return (storedFileName, publicUrl);
+    }
+
+    public Task<Stream?> GetFileStreamAsync(
+        Guid tenantId,
+        string storedFileName,
+        CancellationToken cancellationToken)
+    {
+        var fullPath = Path.Combine(environment.ContentRootPath, "uploads", tenantId.ToString(), storedFileName);
+        if (!File.Exists(fullPath))
+        {
+            return Task.FromResult<Stream?>(null);
+        }
+
+        Stream stream = File.OpenRead(fullPath);
+        return Task.FromResult<Stream?>(stream);
     }
 }

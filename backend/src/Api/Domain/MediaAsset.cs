@@ -11,6 +11,7 @@ public sealed class MediaAsset
     public long SizeBytes { get; set; }
     public string PublicUrl { get; set; } = string.Empty;
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+    public List<string> Tags { get; set; } = [];
 
     public Tenant? Tenant { get; set; }
     public User? UploadedByUser { get; set; }
