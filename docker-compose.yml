@@ -64,7 +64,7 @@ services:
       dockerfile: backend/DbMigrator.Dockerfile
     environment:
       ASPNETCORE_ENVIRONMENT: Development
-      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=${POSTGRES_DB:-postpebble};Username=${DB_MIGRATOR_USER:-postpebble_migrator};Password=${DB_MIGRATOR_PASSWORD:-postpebble_migrator_dev_password}
+      ConnectionStrings__Postgres: Host=postgres;Port=5432;Database=${POSTGRES_DB:-postpebble};Username=${POSTGRES_USER:-postpebble};Password=${POSTGRES_PASSWORD:-postpebble_dev_password}
     depends_on:
       postgres:
         condition: service_healthy

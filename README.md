@@ -20,6 +20,10 @@ Docker-first foundation for a multi-tenant social media management SaaS.
 - Stripe-ready credit wallet ledger (purchase/reserve/consume/release)
 - Dev credit grant endpoint for local testing
 - Scheduler endpoints that reserve credits based on cross-post targets
+- LinkedIn OAuth integration with media publishing (text + images)
+- Publish worker with exponential retry/backoff (1m → 5m → 30m, 3 max)
+- Post edit (PUT) and cancel (mark-cancelled with credit refund)
+- Dashboard analytics endpoint (30-day summary, posts per day, platform breakdown, success rate)
 
 ## API highlights
 - `POST /api/v1/auth/register`
@@ -31,8 +35,11 @@ Docker-first foundation for a multi-tenant social media management SaaS.
 - `POST /api/v1/billing/credit-packs/checkout-session`
 - `POST /api/v1/billing/stripe/webhook`
 - `POST /api/v1/scheduler/posts`
+- `PUT /api/v1/scheduler/posts/{postId}`
 - `POST /api/v1/scheduler/posts/{postId}/mark-success`
 - `POST /api/v1/scheduler/posts/{postId}/mark-failed`
+- `POST /api/v1/scheduler/posts/{postId}/mark-cancelled`
+- `GET /api/v1/analytics/{tenantId}/summary`
 
 ## Notes
 - Schema is now migration-driven. If local DB drift from older manual tables causes issues, reset local volumes once:
@@ -55,7 +62,8 @@ Docker-first foundation for a multi-tenant social media management SaaS.
    - `GET /api/v1/billing/stripe/webhook-events/{tenantId}` shows processed status
 
 ## Next implementation targets
-- Social OAuth connectors (LinkedIn -> Meta -> X -> TikTok)
-- Background publish worker and retry/backoff strategy
-- Dashboard analytics cards and timelines
+- Social OAuth connectors (Meta → X → TikTok)
 - Team invitation UX and role management screens
+- Tenant switcher for multi-tenant users
+- Post drafts (save without credit reservation)
+- Toast notification system

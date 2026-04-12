@@ -13,7 +13,9 @@ public static class MediaEndpoints
     {
         var group = app.MapGroup("/api/v1/media").RequireAuthorization();
         group.MapPost("/upload", UploadAsync);
+        group.MapPut("/{tenantId:guid}/{mediaId:guid}/tags", UpdateTagsAsync);
         group.MapGet("/{tenantId:guid}", ListAsync);
+        group.MapDelete("/{tenantId:guid}/{mediaId:guid}", DeleteAsync);
         return app;
     }
 
@@ -70,6 +72,13 @@ public static class MediaEndpoints
         {
             (storedFileName, publicUrl) = await mediaStorage.SaveAsync(tenantId, file.FileName, stream, cancellationToken);
         }
+        var tagsRaw = form["tags"].ToString();
+        var tags = new List<string>();
+        if (!string.IsNullOrWhiteSpace(tagsRaw))
+        {
+            tags = tagsRaw.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+        }
+
         var asset = new MediaAsset
         {
             TenantId = tenantId,
@@ -78,7 +87,8 @@ public static class MediaEndpoints
             StoredFileName = storedFileName,
             ContentType = file.ContentType,
             SizeBytes = file.Length,
-            PublicUrl = publicUrl
+            PublicUrl = publicUrl,
+            Tags = tags
         };
 
         dbContext.MediaAssets.Add(asset);
@@ -90,7 +100,8 @@ public static class MediaEndpoints
             asset.OriginalFileName,
             asset.ContentType,
             asset.SizeBytes,
-            asset.PublicUrl
+            asset.PublicUrl,
+            asset.Tags
         });
     }
 
@@ -124,10 +135,77 @@ public static class MediaEndpoints
                 x.ContentType,
                 x.SizeBytes,
                 x.PublicUrl,
-                x.CreatedAtUtc
+                x.CreatedAtUtc,
+                x.Tags
             })
             .ToListAsync(cancellationToken);
 
         return Results.Ok(rows);
     }
+    private static async Task<IResult> DeleteAsync(
+        Guid tenantId,
+        Guid mediaId,
+        ClaimsPrincipal principal,
+        MediaDbContext dbContext,
+        ITenantAccessService tenantAccessService,
+        CancellationToken cancellationToken)
+    {
+        var userId = CurrentUserProvider.GetUserId(principal);
+        if (userId is null)
+        {
+            return Results.Unauthorized();
+        }
+
+        var isMember = await tenantAccessService.IsTenantMemberAsync(userId.Value, tenantId, cancellationToken);
+        if (!isMember)
+        {
+            return Results.Forbid();
+        }
+
+        var asset = await dbContext.MediaAssets.FirstOrDefaultAsync(x => x.Id == mediaId && x.TenantId == tenantId, cancellationToken);
+        if (asset is null)
+        {
+            return Results.NotFound();
+        }
+
+        dbContext.MediaAssets.Remove(asset);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return Results.NoContent();
+    }
+
+    private static async Task<IResult> UpdateTagsAsync(
+        Guid tenantId,
+        Guid mediaId,
+        UpdateTagsRequest request,
+        ClaimsPrincipal principal,
+        MediaDbContext dbContext,
+        ITenantAccessService tenantAccessService,
+        CancellationToken cancellationToken)
+    {
+        var userId = CurrentUserProvider.GetUserId(principal);
+        if (userId is null)
+        {
+            return Results.Unauthorized();
+        }
+
+        var isMember = await tenantAccessService.IsTenantMemberAsync(userId.Value, tenantId, cancellationToken);
+        if (!isMember)
+        {
+            return Results.Forbid();
+        }
+
+        var asset = await dbContext.MediaAssets.FirstOrDefaultAsync(x => x.Id == mediaId && x.TenantId == tenantId, cancellationToken);
+        if (asset is null)
+        {
+            return Results.NotFound();
+        }
+
+        asset.Tags = request.Tags ?? [];
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return Results.Ok();
+    }
 }
+
+public sealed record UpdateTagsRequest(List<string> Tags);

@@ -5,6 +5,8 @@ namespace Api.Billing;
 public interface ITenantAccessService
 {
     Task<bool> IsTenantAdminAsync(Guid userId, Guid tenantId, CancellationToken cancellationToken);
+    Task<bool> IsTenantReviewerAsync(Guid userId, Guid tenantId, CancellationToken cancellationToken);
+    Task<bool> IsTenantDrafterAsync(Guid userId, Guid tenantId, CancellationToken cancellationToken);
     Task<bool> IsTenantMemberAsync(Guid userId, Guid tenantId, CancellationToken cancellationToken);
 }
 
