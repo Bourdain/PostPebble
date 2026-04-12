@@ -146,7 +146,7 @@ h1, h2, h3, h4, h5, h6 {
 
 .glass-input {
   width: 100%;
-  background: rgba(255, 255, 255, 0.03);
+  background-color: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--border-subtle);
   border-radius: 10px;
   padding: 0.75rem 1rem;
@@ -159,7 +159,33 @@ h1, h2, h3, h4, h5, h6 {
 
 .glass-input:focus {
   border-color: var(--highlight-blue);
-  background: rgba(51, 183, 255, 0.05);
+  background-color: rgba(51, 183, 255, 0.05);
+}
+
+select.glass-input {
+  appearance: none;
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239ea8c8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+  background-size: 1em;
+  padding-right: 2.5rem;
+  cursor: pointer;
+}
+
+select.glass-input:focus {
+  background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2333b7ff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e");
+}
+
+select.glass-input option {
+  background-color: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.glass-input-sm {
+  padding: 0.4rem 0.75rem;
+  font-size: 0.85rem;
+  background-position: right 0.75rem center;
+  padding-right: 2rem;
 }
 
 .btn-primary {

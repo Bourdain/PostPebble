@@ -188,9 +188,9 @@ export function Settings() {
                   onChange={(e) => setInviteRole(e.target.value)}
                   className="glass-input w-full"
                 >
-                  <option value="Drafter" style={{ background: 'var(--bg-primary)', color: '#fff' }}>Drafter</option>
-                  <option value="Reviewer" style={{ background: 'var(--bg-primary)', color: '#fff' }}>Reviewer</option>
-                  {isOwner && <option value="Admin" style={{ background: 'var(--bg-primary)', color: '#fff' }}>Admin</option>}
+                  <option value="Drafter">Drafter</option>
+                  <option value="Reviewer">Reviewer</option>
+                  {isOwner && <option value="Admin">Admin</option>}
                 </select>
               </div>
               <button type="submit" className="btn-primary">Invite</button>
@@ -219,13 +219,13 @@ export function Settings() {
                         <span className="text-sm font-semibold">{member.role}</span>
                       ) : (
                         <select 
-                          className="glass-input text-sm p-1"
+                          className="glass-input glass-input-sm"
                           value={member.role}
                           onChange={(e) => handleRoleChange(member.userId, e.target.value)}
                         >
-                          <option value="Drafter" style={{ background: 'var(--bg-primary)', color: '#fff' }}>Drafter</option>
-                          <option value="Reviewer" style={{ background: 'var(--bg-primary)', color: '#fff' }}>Reviewer</option>
-                          {isOwner && <option value="Admin" style={{ background: 'var(--bg-primary)', color: '#fff' }}>Admin</option>}
+                          <option value="Drafter">Drafter</option>
+                          <option value="Reviewer">Reviewer</option>
+                          {isOwner && <option value="Admin">Admin</option>}
                         </select>
                       )}
                     </td>
