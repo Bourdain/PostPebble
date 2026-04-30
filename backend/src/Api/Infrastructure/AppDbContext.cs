@@ -18,6 +18,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<ScheduledPostMedia> ScheduledPostMediaLinks => Set<ScheduledPostMedia>();
     public DbSet<LinkedInOAuthState> LinkedInOAuthStates => Set<LinkedInOAuthState>();
     public DbSet<LinkedInConnection> LinkedInConnections => Set<LinkedInConnection>();
+    public DbSet<TenantInvite> TenantInvites => Set<TenantInvite>();
+    public DbSet<AppNotification> Notifications => Set<AppNotification>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -48,6 +50,46 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
                 .HasForeignKey(x => x.UserId);
             builder.HasOne(x => x.Tenant)
                 .WithMany(x => x.Memberships)
+                .HasForeignKey(x => x.TenantId);
+        });
+
+        modelBuilder.Entity<TenantInvite>(builder =>
+        {
+            builder.ToTable("tenant_invites");
+            builder.HasKey(x => x.Id);
+            builder.HasIndex(x => x.Code).IsUnique();
+            builder.HasIndex(x => new { x.TenantId, x.Email, x.Status });
+            builder.Property(x => x.Email).HasMaxLength(320).IsRequired();
+            builder.Property(x => x.Role).HasConversion<string>().HasMaxLength(20);
+            builder.Property(x => x.Code).HasMaxLength(32).IsRequired();
+            builder.Property(x => x.Status).HasConversion<string>().HasMaxLength(20);
+            builder.HasOne(x => x.Tenant)
+                .WithMany()
+                .HasForeignKey(x => x.TenantId);
+            builder.HasOne(x => x.InvitedByUser)
+                .WithMany()
+                .HasForeignKey(x => x.InvitedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+            builder.HasOne(x => x.AcceptedByUser)
+                .WithMany()
+                .HasForeignKey(x => x.AcceptedByUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<AppNotification>(builder =>
+        {
+            builder.ToTable("notifications");
+            builder.HasKey(x => x.Id);
+            builder.HasIndex(x => new { x.UserId, x.CreatedAtUtc });
+            builder.Property(x => x.Type).HasMaxLength(50).IsRequired();
+            builder.Property(x => x.Title).HasMaxLength(200).IsRequired();
+            builder.Property(x => x.Body).HasMaxLength(1000).IsRequired();
+            builder.Property(x => x.LinkUrl).HasMaxLength(500);
+            builder.HasOne(x => x.User)
+                .WithMany(x => x.Notifications)
+                .HasForeignKey(x => x.UserId);
+            builder.HasOne(x => x.Tenant)
+                .WithMany()
                 .HasForeignKey(x => x.TenantId);
         });
 

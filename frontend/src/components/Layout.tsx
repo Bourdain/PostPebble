@@ -3,6 +3,7 @@ import { Outlet, Navigate } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { usePostPebble } from '../contexts/PostPebbleContext';
 import { motion } from 'framer-motion';
+import { NotificationBell } from './NotificationBell';
 
 export function Layout() {
   const { auth } = usePostPebble();
@@ -15,6 +16,10 @@ export function Layout() {
     <div className="layout-shell">
       <Sidebar />
       <main className="main-content">
+        <div className="topbar">
+          <div />
+          <NotificationBell />
+        </div>
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}

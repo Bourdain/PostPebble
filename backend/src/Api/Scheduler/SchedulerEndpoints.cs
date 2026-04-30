@@ -14,6 +14,9 @@ public static class SchedulerEndpoints
         group.MapPost("/posts", CreateScheduledPostAsync);
         group.MapGet("/posts/{tenantId:guid}", ListScheduledPostsAsync);
         group.MapPut("/posts/{postId:guid}", UpdateScheduledPostAsync);
+        group.MapPost("/posts/{postId:guid}/submit-for-approval", SubmitForApprovalAsync);
+        group.MapPost("/posts/{postId:guid}/approve", ApprovePostAsync);
+        group.MapPost("/posts/{postId:guid}/reject", RejectPostAsync);
         group.MapPost("/posts/{postId:guid}/mark-publishing", MarkPublishingAsync);
         group.MapPost("/posts/{postId:guid}/mark-success", MarkSuccessAsync);
         group.MapPost("/posts/{postId:guid}/mark-failed", MarkFailedAsync);
@@ -93,17 +96,27 @@ public static class SchedulerEndpoints
             return Results.Forbid();
         }
 
+        var isReviewer = await tenantAccessService.IsTenantReviewerAsync(userId.Value, request.TenantId, cancellationToken);
+        var status = request.QueueImmediately && isReviewer 
+            ? ScheduledPostStatus.Queued 
+            : ScheduledPostStatus.Draft;
+
         var creditsNeeded = request.Targets.Count;
-        var reservation = await reservationLedgerService.ReserveAsync(
-            request.TenantId,
-            creditsNeeded,
-            $"schedule:{Guid.NewGuid()}",
-            $"Reserved for scheduled cross-post ({creditsNeeded} targets).",
-            cancellationToken
-        );
-        if (reservation is null)
+        CreditReservation? reservation = null;
+
+        if (status == ScheduledPostStatus.Queued)
         {
-            return Results.BadRequest(new { error = "Insufficient credits." });
+            reservation = await reservationLedgerService.ReserveAsync(
+                request.TenantId,
+                creditsNeeded,
+                $"schedule:{Guid.NewGuid()}",
+                $"Reserved for scheduled cross-post ({creditsNeeded} targets).",
+                cancellationToken
+            );
+            if (reservation is null)
+            {
+                return Results.BadRequest(new { error = "Insufficient credits to queue post." });
+            }
         }
 
         var post = new ScheduledPost
@@ -112,8 +125,8 @@ public static class SchedulerEndpoints
             CreatedByUserId = userId.Value,
             TextContent = request.TextContent.Trim(),
             ScheduledAtUtc = request.ScheduledAtUtc,
-            ReservationId = reservation.Id,
-            Status = ScheduledPostStatus.Queued
+            ReservationId = reservation?.Id,
+            Status = status
         };
         post.Targets = request.Targets
             .Select(x => new PostTarget
@@ -149,8 +162,9 @@ public static class SchedulerEndpoints
         return Results.Ok(new
         {
             post.Id,
-            reservedCredits = creditsNeeded,
-            reservationId = reservation.Id,
+            reservedCredits = reservation is not null ? creditsNeeded : 0,
+            reservationId = reservation?.Id,
+            post.Status,
             post.ScheduledAtUtc
         });
     }
@@ -185,9 +199,9 @@ public static class SchedulerEndpoints
             return Results.Forbid();
         }
 
-        if (post.Status != ScheduledPostStatus.Queued && post.Status != ScheduledPostStatus.Draft)
+        if (post.Status != ScheduledPostStatus.Draft && post.Status != ScheduledPostStatus.PendingApproval)
         {
-            return Results.Conflict("Only queued or draft posts can be edited.");
+            return Results.Conflict("Only draft or pending approval posts can be edited.");
         }
 
         if (request.TextContent is not null)
@@ -243,6 +257,111 @@ public static class SchedulerEndpoints
             targets = post.Targets.Select(t => new { platform = t.Platform.ToString(), t.ExternalAccountId }),
             mediaCount = post.MediaLinks.Count
         });
+    }
+
+    private static async Task<IResult> SubmitForApprovalAsync(
+        Guid postId,
+        ClaimsPrincipal principal,
+        SchedulerDbContext dbContext,
+        ITenantAccessService tenantAccessService,
+        CancellationToken cancellationToken)
+    {
+        var userId = CurrentUserProvider.GetUserId(principal);
+        if (userId is null) return Results.Unauthorized();
+
+        var post = await dbContext.ScheduledPosts.SingleOrDefaultAsync(x => x.Id == postId, cancellationToken);
+        if (post is null) return Results.NotFound();
+
+        var isMember = await tenantAccessService.IsTenantMemberAsync(userId.Value, post.TenantId, cancellationToken);
+        if (!isMember) return Results.Forbid();
+
+        if (post.Status != ScheduledPostStatus.Draft)
+        {
+            return Results.Conflict("Only drafts can be submitted for approval.");
+        }
+
+        post.Status = ScheduledPostStatus.PendingApproval;
+        post.FailureReason = null; // Clear any previous rejection reasons
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return Results.Ok(new { postId, status = post.Status.ToString() });
+    }
+
+    private static async Task<IResult> ApprovePostAsync(
+        Guid postId,
+        ClaimsPrincipal principal,
+        SchedulerDbContext dbContext,
+        ITenantAccessService tenantAccessService,
+        IReservationLedgerService reservationLedgerService,
+        CancellationToken cancellationToken)
+    {
+        var userId = CurrentUserProvider.GetUserId(principal);
+        if (userId is null) return Results.Unauthorized();
+
+        var post = await dbContext.ScheduledPosts
+            .Include(x => x.Targets)
+            .SingleOrDefaultAsync(x => x.Id == postId, cancellationToken);
+        if (post is null) return Results.NotFound();
+
+        var isReviewer = await tenantAccessService.IsTenantReviewerAsync(userId.Value, post.TenantId, cancellationToken);
+        if (!isReviewer) return Results.Forbid();
+
+        if (post.Status != ScheduledPostStatus.PendingApproval && post.Status != ScheduledPostStatus.Draft)
+        {
+            return Results.Conflict("Only drafts or pending posts can be approved.");
+        }
+
+        var creditsNeeded = post.Targets.Count;
+        if (creditsNeeded == 0) return Results.BadRequest("Post has no targets.");
+
+        var reservation = await reservationLedgerService.ReserveAsync(
+            post.TenantId,
+            creditsNeeded,
+            $"schedule:{Guid.NewGuid()}",
+            $"Reserved for scheduled cross-post ({creditsNeeded} targets).",
+            cancellationToken
+        );
+
+        if (reservation is null)
+        {
+            return Results.BadRequest(new { error = "Insufficient credits to approve and queue post." });
+        }
+
+        post.ReservationId = reservation.Id;
+        post.Status = ScheduledPostStatus.Queued;
+        post.FailureReason = null;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return Results.Ok(new { postId, status = post.Status.ToString(), reservedCredits = creditsNeeded });
+    }
+
+    private static async Task<IResult> RejectPostAsync(
+        Guid postId,
+        RejectPostRequest request,
+        ClaimsPrincipal principal,
+        SchedulerDbContext dbContext,
+        ITenantAccessService tenantAccessService,
+        CancellationToken cancellationToken)
+    {
+        var userId = CurrentUserProvider.GetUserId(principal);
+        if (userId is null) return Results.Unauthorized();
+
+        var post = await dbContext.ScheduledPosts.SingleOrDefaultAsync(x => x.Id == postId, cancellationToken);
+        if (post is null) return Results.NotFound();
+
+        var isReviewer = await tenantAccessService.IsTenantReviewerAsync(userId.Value, post.TenantId, cancellationToken);
+        if (!isReviewer) return Results.Forbid();
+
+        if (post.Status != ScheduledPostStatus.PendingApproval)
+        {
+            return Results.Conflict("Only pending posts can be rejected.");
+        }
+
+        post.Status = ScheduledPostStatus.Draft;
+        post.FailureReason = string.IsNullOrWhiteSpace(request.Reason) ? "Rejected." : request.Reason.Trim();
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return Results.Ok(new { postId, status = post.Status.ToString(), reason = post.FailureReason });
     }
 
     private static async Task<IResult> ListScheduledPostsAsync(
@@ -491,3 +610,4 @@ public static class SchedulerEndpoints
 }
 
 public sealed record MarkFailedRequest(string? Reason);
+public sealed record RejectPostRequest(string? Reason);

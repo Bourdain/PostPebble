@@ -59,7 +59,8 @@ export function Settings() {
         body: JSON.stringify({ email: inviteEmail, role: inviteRole })
       });
       if (res.ok) {
-        setInviteStatus('User invited successfully.');
+        const data = await res.json();
+        setInviteStatus(`Invite created. Placeholder code: ${data.inviteCode}`);
         setInviteEmail('');
         loadMembers();
       } else {

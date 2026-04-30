@@ -15,6 +15,33 @@ export type AuthResponse = {
   tenants: TenantSummary[];
 };
 
+export type InviteLookup = {
+  email: string;
+  tenantName: string;
+  role: string;
+  expiresAtUtc: string;
+  status: string;
+};
+
+export type NotificationItem = {
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  linkUrl?: string | null;
+  tenantId?: string | null;
+  tenantName?: string | null;
+  isRead: boolean;
+  createdAtUtc: string;
+};
+
+export type NotificationPage = {
+  items: NotificationItem[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+};
+
 export type CreditTransaction = {
   id: string;
   type: string;
@@ -92,11 +119,20 @@ type PostPebbleContextType = {
   webhookEvents: StripeWebhookEvent[];
   linkedInConnections: LinkedInConnection[];
   analytics: AnalyticsSummary | null;
+  unreadNotificationCount: number;
+  recentNotifications: NotificationItem[];
   status: string;
   setStatus: (status: string) => void;
   register: (email: string, password: string, tenantName: string) => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
+  lookupInvite: (code: string) => Promise<InviteLookup | null>;
+  acceptInvite: (code: string, email: string, password: string) => Promise<boolean>;
   logout: () => void;
+  loadNotificationSummary: () => Promise<void>;
+  loadRecentNotifications: () => Promise<void>;
+  loadNotificationsPage: (page: number, pageSize?: number) => Promise<NotificationPage | null>;
+  markNotificationRead: (notificationId: string) => Promise<void>;
+  markAllNotificationsRead: () => Promise<void>;
   loadWallet: () => Promise<void>;
   loadLinkedInConnections: () => Promise<void>;
   connectLinkedIn: () => Promise<void>;
@@ -128,6 +164,8 @@ export function PostPebbleProvider({ children }: { children: React.ReactNode }) 
   const [webhookEvents, setWebhookEvents] = useState<StripeWebhookEvent[]>([]);
   const [linkedInConnections, setLinkedInConnections] = useState<LinkedInConnection[]>([]);
   const [analytics, setAnalytics] = useState<AnalyticsSummary | null>(null);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const [recentNotifications, setRecentNotifications] = useState<NotificationItem[]>([]);
 
   const activeTenant = useMemo(() => auth?.tenants?.[0] ?? null, [auth]);
 
@@ -146,6 +184,8 @@ export function PostPebbleProvider({ children }: { children: React.ReactNode }) 
       void loadScheduledPostsWithToken(parsed.accessToken, tenantId);
       void loadLinkedInConnectionsWithToken(parsed.accessToken, tenantId);
       void loadAnalyticsWithToken(parsed.accessToken, tenantId);
+      void loadNotificationSummaryWithToken(parsed.accessToken);
+      void loadRecentNotificationsWithToken(parsed.accessToken);
       setStatus("Session restored.");
     } catch {
       localStorage.removeItem(authStorageKey);
@@ -192,6 +232,50 @@ export function PostPebbleProvider({ children }: { children: React.ReactNode }) 
     await loadScheduledPostsWithToken(json.accessToken, json.tenants[0]?.tenantId);
     await loadLinkedInConnectionsWithToken(json.accessToken, json.tenants[0]?.tenantId);
     await loadAnalyticsWithToken(json.accessToken, json.tenants[0]?.tenantId);
+    await loadNotificationSummaryWithToken(json.accessToken);
+    await loadRecentNotificationsWithToken(json.accessToken);
+  }
+
+  async function lookupInvite(code: string) {
+    const normalizedCode = code.trim();
+    if (!normalizedCode) {
+      return null;
+    }
+
+    const response = await fetch(`${apiBaseUrl}/api/v1/auth/invites/${encodeURIComponent(normalizedCode)}`);
+    if (!response.ok) {
+      setStatus(`Invite lookup failed (${response.status}).`);
+      return null;
+    }
+
+    return (await response.json()) as InviteLookup;
+  }
+
+  async function acceptInvite(code: string, email: string, password: string) {
+    setStatus("Accepting invite...");
+    const response = await fetch(`${apiBaseUrl}/api/v1/auth/accept-invite`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, email, password }),
+    });
+
+    if (!response.ok) {
+      setStatus(`Accept invite failed (${response.status}).`);
+      return false;
+    }
+
+    const json = (await response.json()) as AuthResponse;
+    setAuth(json);
+    localStorage.setItem(authStorageKey, JSON.stringify(json));
+    setStatus("Invite accepted.");
+    await loadWalletWithToken(json.accessToken, json.tenants[0]?.tenantId);
+    await loadMediaWithToken(json.accessToken, json.tenants[0]?.tenantId);
+    await loadScheduledPostsWithToken(json.accessToken, json.tenants[0]?.tenantId);
+    await loadLinkedInConnectionsWithToken(json.accessToken, json.tenants[0]?.tenantId);
+    await loadAnalyticsWithToken(json.accessToken, json.tenants[0]?.tenantId);
+    await loadNotificationSummaryWithToken(json.accessToken);
+    await loadRecentNotificationsWithToken(json.accessToken);
+    return true;
   }
 
   async function loadWalletWithToken(token: string, tenantId?: string) {
@@ -288,8 +372,86 @@ export function PostPebbleProvider({ children }: { children: React.ReactNode }) 
     setLinkedInConnections([]);
     setWebhookEvents([]);
     setAnalytics(null);
+    setUnreadNotificationCount(0);
+    setRecentNotifications([]);
     localStorage.removeItem(authStorageKey);
     setStatus("Logged out.");
+  }
+
+  async function loadNotificationSummaryWithToken(token: string) {
+    const response = await fetch(`${apiBaseUrl}/api/v1/notifications/summary`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (response.ok) {
+      const json = (await response.json()) as { unreadCount: number };
+      setUnreadNotificationCount(json.unreadCount);
+    }
+  }
+
+  async function loadNotificationSummary() {
+    if (!auth) return;
+    await loadNotificationSummaryWithToken(auth.accessToken);
+  }
+
+  async function loadRecentNotificationsWithToken(token: string) {
+    const response = await fetch(`${apiBaseUrl}/api/v1/notifications/recent?take=5`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (response.ok) {
+      setRecentNotifications((await response.json()) as NotificationItem[]);
+    }
+  }
+
+  async function loadRecentNotifications() {
+    if (!auth) return;
+    await loadRecentNotificationsWithToken(auth.accessToken);
+  }
+
+  async function loadNotificationsPage(page: number, pageSize: number = 10) {
+    if (!auth) return null;
+    const response = await fetch(`${apiBaseUrl}/api/v1/notifications?page=${page}&pageSize=${pageSize}`, {
+      headers: { Authorization: `Bearer ${auth.accessToken}` },
+    });
+    if (!response.ok) {
+      setStatus(`Notifications load failed (${response.status}).`);
+      return null;
+    }
+
+    return (await response.json()) as NotificationPage;
+  }
+
+  async function markNotificationRead(notificationId: string) {
+    if (!auth) return;
+    const response = await fetch(`${apiBaseUrl}/api/v1/notifications/${notificationId}/read`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${auth.accessToken}` },
+    });
+    if (!response.ok) {
+      setStatus(`Mark read failed (${response.status}).`);
+      return;
+    }
+
+    setRecentNotifications((current) =>
+      current.map((notification) =>
+        notification.id === notificationId ? { ...notification, isRead: true } : notification
+      )
+    );
+    await loadNotificationSummaryWithToken(auth.accessToken);
+  }
+
+  async function markAllNotificationsRead() {
+    if (!auth) return;
+    const response = await fetch(`${apiBaseUrl}/api/v1/notifications/read-all`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${auth.accessToken}` },
+    });
+    if (!response.ok) {
+      setStatus(`Mark all read failed (${response.status}).`);
+      return;
+    }
+
+    setRecentNotifications((current) => current.map((notification) => ({ ...notification, isRead: true })));
+    setUnreadNotificationCount(0);
   }
 
   async function buyCredits() {
@@ -564,11 +726,20 @@ export function PostPebbleProvider({ children }: { children: React.ReactNode }) 
         webhookEvents,
         linkedInConnections,
         analytics,
+        unreadNotificationCount,
+        recentNotifications,
         status,
         setStatus,
         register,
         login,
+        lookupInvite,
+        acceptInvite,
         logout,
+        loadNotificationSummary,
+        loadRecentNotifications,
+        loadNotificationsPage,
+        markNotificationRead,
+        markAllNotificationsRead,
         loadWallet,
         loadLinkedInConnections,
         connectLinkedIn,

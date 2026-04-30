@@ -66,8 +66,38 @@ export function Scheduler() {
       if (res.ok) {
         await loadScheduledPosts();
       } else {
-        alert('Failed to approve post.');
+        const errorData = await res.json().catch(() => null);
+        alert(`Failed to approve post. ${errorData?.error || ''}`);
       }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleSubmitForApproval = async (postId: string) => {
+    if (!auth) return;
+    try {
+      const res = await fetch(`${apiBaseUrl}/api/v1/scheduler/posts/${postId}/submit-for-approval`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${auth.accessToken}` }
+      });
+      if (res.ok) await loadScheduledPosts();
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleReject = async (postId: string) => {
+    if (!auth) return;
+    const reason = window.prompt('Rejection reason (optional):');
+    if (reason === null) return; // Cancelled
+    try {
+      const res = await fetch(`${apiBaseUrl}/api/v1/scheduler/posts/${postId}/reject`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${auth.accessToken}` },
+        body: JSON.stringify({ reason })
+      });
+      if (res.ok) await loadScheduledPosts();
     } catch (err) {
       console.error(err);
     }
@@ -348,7 +378,9 @@ export function Scheduler() {
                     )}
                   </td>
                   <td>
-                    <span className={`statusBadge ${post.status.toLowerCase()}`}>{post.status}</span>
+                    <span className={`statusBadge ${post.status.toLowerCase()}`}>
+                      {post.status === 'PendingApproval' ? 'Pending' : post.status}
+                    </span>
                     {post.failureReason && post.status !== 'Published' && (
                       <div style={{ marginTop: '4px', color: '#fca5a5', fontSize: '0.7rem', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={post.failureReason}>
                         {post.failureReason}
@@ -371,24 +403,44 @@ export function Scheduler() {
                     )}
                   </td>
                   <td>
-                    {(post.status === 'Queued' || post.status === 'Draft') && editingPostId !== post.id && (
+                    {(post.status === 'Queued' || post.status === 'Draft' || post.status === 'PendingApproval') && editingPostId !== post.id && (
                       <div className="flex gap-1 items-center">
-                        {post.status === 'Draft' && isReviewerOrHigher && (
+                        {post.status === 'Draft' && (
                           <button
-                            onClick={() => handleApprove(post.id)}
-                            style={{ background: 'var(--bg-secondary)', border: '1px solid #4ade80', cursor: 'pointer', color: '#4ade80', padding: '4px 8px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 'bold' }}
-                            title="Approve post"
+                            onClick={() => handleSubmitForApproval(post.id)}
+                            style={{ background: 'var(--bg-secondary)', border: '1px solid var(--highlight-blue)', cursor: 'pointer', color: 'var(--highlight-blue)', padding: '4px 8px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 'bold' }}
+                            title="Submit for Approval"
                           >
-                            Approve
+                            Submit
                           </button>
                         )}
-                        <button
-                          onClick={() => handleStartEdit(post)}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--highlight-blue)', padding: '4px' }}
-                          title="Edit post"
-                        >
-                          <Pencil size={16} />
-                        </button>
+                        {post.status === 'PendingApproval' && isReviewerOrHigher && (
+                          <>
+                            <button
+                              onClick={() => handleApprove(post.id)}
+                              style={{ background: 'var(--bg-secondary)', border: '1px solid #4ade80', cursor: 'pointer', color: '#4ade80', padding: '4px 8px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 'bold' }}
+                              title="Approve post"
+                            >
+                              Approve
+                            </button>
+                            <button
+                              onClick={() => handleReject(post.id)}
+                              style={{ background: 'var(--bg-secondary)', border: '1px solid #ef4444', cursor: 'pointer', color: '#ef4444', padding: '4px 8px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 'bold' }}
+                              title="Reject post"
+                            >
+                              Reject
+                            </button>
+                          </>
+                        )}
+                        {(post.status === 'Draft' || post.status === 'PendingApproval') && (
+                          <button
+                            onClick={() => handleStartEdit(post)}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--highlight-blue)', padding: '4px' }}
+                            title="Edit post"
+                          >
+                            <Pencil size={16} />
+                          </button>
+                        )}
                         <button
                           onClick={() => handleCancel(post.id)}
                           style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', padding: '4px' }}

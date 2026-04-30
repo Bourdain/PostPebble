@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Api.Domain;
 using Api.Infrastructure;
+using Api.Notifications;
 using Microsoft.EntityFrameworkCore;
 
 namespace Api.Tenants;
@@ -12,6 +13,9 @@ public static class TenantEndpoints
         var group = app.MapGroup("/api/v1/tenants").RequireAuthorization();
         group.MapGet("/", ListMyTenantsAsync);
         group.MapPost("/{tenantId:guid}/members", InviteMemberAsync);
+        group.MapGet("/{tenantId:guid}/members", ListTenantMembersAsync);
+        group.MapPut("/{tenantId:guid}/members/{memberUserId:guid}/role", UpdateMemberRoleAsync);
+        group.MapPost("/{tenantId:guid}/transfer-ownership", TransferOwnershipAsync);
         return app;
     }
 
@@ -45,6 +49,8 @@ public static class TenantEndpoints
         InviteMemberRequest request,
         ClaimsPrincipal principal,
         AppDbContext dbContext,
+        IInviteEmailSender inviteEmailSender,
+        NotificationService notificationService,
         CancellationToken cancellationToken)
     {
         var userId = TryGetUserId(principal);
@@ -65,27 +71,79 @@ public static class TenantEndpoints
             ? parsedRole
             : TenantRole.Drafter;
 
-        var user = await dbContext.Users.SingleOrDefaultAsync(x => x.Email == email, cancellationToken);
-        if (user is null)
+        var tenant = await dbContext.Tenants.SingleOrDefaultAsync(x => x.Id == tenantId, cancellationToken);
+        if (tenant is null)
         {
-            return Results.NotFound("User not found. Create user first, then invite.");
+            return Results.NotFound("Tenant not found.");
         }
 
-        var exists = await dbContext.Memberships.AnyAsync(x => x.UserId == user.Id && x.TenantId == tenantId, cancellationToken);
-        if (exists)
+        var existingMembership = await dbContext.Memberships
+            .Include(x => x.User)
+            .AnyAsync(x => x.TenantId == tenantId && x.User!.Email == email, cancellationToken);
+        if (existingMembership)
         {
             return Results.Conflict("User is already a member of this tenant.");
         }
 
-        dbContext.Memberships.Add(new Membership
-        {
-            UserId = user.Id,
-            TenantId = tenantId,
-            Role = role
-        });
+        var existingInvite = await dbContext.TenantInvites
+            .SingleOrDefaultAsync(
+                x => x.TenantId == tenantId && x.Email == email && x.Status == TenantInviteStatus.Pending,
+                cancellationToken);
 
+        if (existingInvite is not null)
+        {
+            if (existingInvite.ExpiresAtUtc > DateTime.UtcNow)
+            {
+                return Results.Conflict("There is already a pending invite for this email.");
+            }
+
+            existingInvite.Status = TenantInviteStatus.Expired;
+        }
+
+        string code;
+        do
+        {
+            code = TenantInviteCodeGenerator.Create();
+        } while (await dbContext.TenantInvites.AnyAsync(x => x.Code == code, cancellationToken));
+
+        var invite = new TenantInvite
+        {
+            TenantId = tenantId,
+            Email = email,
+            Role = role,
+            Code = code,
+            InvitedByUserId = userId.Value,
+            ExpiresAtUtc = DateTime.UtcNow.AddDays(14)
+        };
+
+        dbContext.TenantInvites.Add(invite);
         await dbContext.SaveChangesAsync(cancellationToken);
-        return Results.Ok(new { message = "Member added.", tenantId, user.Email, role = role.ToString() });
+
+        var dispatch = await inviteEmailSender.SendInviteAsync(
+            email,
+            tenant.Name,
+            role.ToString(),
+            code,
+            cancellationToken);
+
+        await notificationService.CreateAsync(
+            userId.Value,
+            "InviteCreated",
+            "Invite created",
+            $"Invitation prepared for {email} to join {tenant.Name} as {role}.",
+            tenantId,
+            "/settings",
+            cancellationToken);
+
+        return Results.Ok(new InviteMemberResponse(
+            "Invite created.",
+            tenantId,
+            email,
+            role.ToString(),
+            invite.ExpiresAtUtc,
+            dispatch.Mode,
+            dispatch.Message,
+            dispatch.InviteCode));
     }
 
     private static Guid? TryGetUserId(ClaimsPrincipal principal)
@@ -147,6 +205,7 @@ public static class TenantEndpoints
         UpdateRoleRequest request,
         ClaimsPrincipal principal,
         AppDbContext dbContext,
+        NotificationService notificationService,
         CancellationToken cancellationToken)
     {
         var userId = TryGetUserId(principal);
@@ -201,6 +260,14 @@ public static class TenantEndpoints
 
         targetMembership.Role = newRole;
         await dbContext.SaveChangesAsync(cancellationToken);
+        await notificationService.CreateAsync(
+            memberUserId,
+            "RoleChanged",
+            "Tenant role updated",
+            $"Your role in this tenant is now {newRole}.",
+            tenantId,
+            "/settings",
+            cancellationToken);
         return Results.Ok(new { message = "Role updated.", targetMembership.UserId, Role = targetMembership.Role.ToString() });
     }
 
@@ -209,6 +276,7 @@ public static class TenantEndpoints
         TransferOwnershipRequest request,
         ClaimsPrincipal principal,
         AppDbContext dbContext,
+        NotificationService notificationService,
         CancellationToken cancellationToken)
     {
         var userId = TryGetUserId(principal);
@@ -238,10 +306,27 @@ public static class TenantEndpoints
         targetMembership.Role = TenantRole.Owner;
 
         await dbContext.SaveChangesAsync(cancellationToken);
+        await notificationService.CreateAsync(
+            request.NewOwnerUserId,
+            "OwnershipTransferred",
+            "You are now the tenant owner",
+            "Ownership was transferred to you.",
+            tenantId,
+            "/settings",
+            cancellationToken);
         return Results.Ok(new { message = "Ownership transferred successfully." });
     }
 }
 
 public sealed record InviteMemberRequest(string Email, string Role = "Drafter");
+public sealed record InviteMemberResponse(
+    string Message,
+    Guid TenantId,
+    string Email,
+    string Role,
+    DateTime ExpiresAtUtc,
+    string DeliveryMode,
+    string DeliveryMessage,
+    string InviteCode);
 public sealed record UpdateRoleRequest(string NewRole);
 public sealed record TransferOwnershipRequest(Guid NewOwnerUserId);

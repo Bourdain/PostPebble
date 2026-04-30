@@ -9,6 +9,8 @@ import { Scheduler } from './pages/Scheduler';
 import { Integrations } from './pages/Integrations';
 import { Billing } from './pages/Billing';
 import { Settings } from './pages/Settings';
+import { Notifications } from './pages/Notifications';
+import { AcceptInvite } from './pages/AcceptInvite';
 
 export default function App() {
   return (
@@ -16,6 +18,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/auth" element={<Auth />} />
+          <Route path="/accept-invite" element={<AcceptInvite />} />
           <Route element={<Layout />}>
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/library" element={<Library />} />
@@ -23,6 +26,7 @@ export default function App() {
             <Route path="/integrations" element={<Integrations />} />
             <Route path="/billing" element={<Billing />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/notifications" element={<Notifications />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Route>
         </Routes>

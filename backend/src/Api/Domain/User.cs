@@ -9,4 +9,5 @@ public sealed class User
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
 
     public List<Membership> Memberships { get; set; } = [];
+    public List<AppNotification> Notifications { get; set; } = [];
 }

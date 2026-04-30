@@ -1,5 +1,5 @@
 import React, { useState, FormEvent } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 import { usePostPebble } from '../contexts/PostPebbleContext';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -89,6 +89,12 @@ export function Auth() {
           >
             {isLogin ? "Don't have an account? Sign up" : "Already have an account? Sign in"}
           </button>
+        </div>
+
+        <div className="mt-4 text-center">
+          <Link to="/accept-invite" style={{ color: 'var(--highlight-blue)', textDecoration: 'none', fontSize: '0.9rem' }}>
+            Accept an invite code
+          </Link>
         </div>
       </div>
     </div>

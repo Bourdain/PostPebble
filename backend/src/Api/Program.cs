@@ -6,6 +6,7 @@ using Api.Domain;
 using Api.Infrastructure;
 using Api.LinkedIn;
 using Api.Media;
+using Api.Notifications;
 using Api.Scheduler;
 using Api.Tenants;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -79,6 +80,8 @@ builder.Services.AddScoped<ITenantAccessService, TenantAccessService>();
 builder.Services.AddScoped<IReservationLedgerService>(sp => sp.GetRequiredService<CreditLedgerService>());
 builder.Services.AddScoped<StripeWebhookService>();
 builder.Services.AddScoped<IMediaStorage, LocalMediaStorage>();
+builder.Services.AddScoped<NotificationService>();
+builder.Services.AddScoped<IInviteEmailSender, PlaceholderInviteEmailSender>();
 builder.Services.AddHttpClient<LinkedInOAuthService>();
 builder.Services.AddHttpClient<LinkedInPublisher>();
 builder.Services.ConfigureHttpJsonOptions(options =>
@@ -140,6 +143,7 @@ app.MapGet("/api/v1/system", () =>
 
 app.MapAuthEndpoints();
 app.MapTenantEndpoints();
+app.MapNotificationEndpoints();
 app.MapBillingEndpoints();
 app.MapSchedulerEndpoints();
 app.MapMediaEndpoints();
